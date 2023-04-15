@@ -30,7 +30,7 @@ def render_path_spiral(c2w, up, rads, focal, zdelta, zrate, rots, N):
         render_poses.append(viewmatrix(z, up, c))
     return render_poses
 
-def generate_renderpath(poses, focal, N_views = 120, N_rots = 2, zrate=.5, sc=1.):
+def generate_renderpath(poses, focal, N_views = 120, N_rots = 2, zrate=.5, scale=1):
     '''
     poses: N x 3 x 4
     '''
@@ -38,14 +38,20 @@ def generate_renderpath(poses, focal, N_views = 120, N_rots = 2, zrate=.5, sc=1.
 
     up = normalize(poses[:, :3, 1].sum(0))
 
-    tt = poses[:,:3,3] # ptstocam(poses[:3,3,:].T, c2w).T
-    rads = np.percentile(np.abs(tt), 90, 0) * sc
+    tt = poses[:,:3, 3] # ptstocam(poses[:3,3,:].T, c2w).T
+    rads = np.percentile(np.abs(tt), 90, 0) * scale
 
     render_poses = []
     rads = np.array(list(rads) + [1.])
-    
+    # zrate = 5
     for theta in np.linspace(0., 2. * np.pi * N_rots, N_views+1)[:-1]:
-        c = np.dot(c2w[:3,:4], np.array([np.cos(theta), -np.sin(theta), -np.sin(theta*zrate), 1.]) * rads) 
+        # ind = 0
+        # abstheta = theta % (2. * np.pi)
+        # if abstheta < np.pi:
+        #     ind = np.abs(abstheta - np.pi / 2)
+        # else:
+        #     ind = np.abs(abstheta - np.pi / 2 * 3)
+        c = np.dot(c2w[:3,:4], np.array([np.cos(theta),-np.sin(theta), -np.sin(theta*zrate), 1.]) * rads) 
         z = normalize(c - np.dot(c2w[:3,:4], np.array([0,0,-focal, 1.])))
         render_poses.append(viewmatrix(z, up, c))
     return render_poses

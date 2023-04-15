@@ -3,6 +3,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import numpy as np
 import imageio
+from skimage import img_as_ubyte
 import json
 import random
 import time
@@ -78,27 +79,24 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None, ndc=True, near=0., f
       focal: float. Focal length of pinhole camera.
       chunk: int. Maximum number of rays to process simultaneously. Used to
         control maximum memory usage. Does not affect final results.
-      rays: array of shape [2, batch_size, 3]. Ray origin and direction for
-        each example in batch.
+      rays: array of shape [2, B, 3]. Ray origin and direction for each example in batch.
       c2w: array of shape [3, 4]. Camera-to-world transformation matrix.
       ndc: bool. If True, represent ray origin, direction in NDC coordinates.
-      near: float or array of shape [batch_size]. Nearest distance for a ray.
-      far: float or array of shape [batch_size]. Farthest distance for a ray.
+      near: float or array of shape [B]. Nearest distance for a ray.
+      far: float or array of shape [B]. Farthest distance for a ray.
       use_viewdirs: bool. If True, use viewing direction of a point in space in model.
       c2w_staticcam: array of shape [3, 4]. If not None, use this transformation matrix for 
        camera while using other c2w argument for viewing directions.
     Returns:
-      rgb_map: [batch_size, 3]. Predicted RGB values for rays.
-      disp_map: [batch_size]. Disparity map. Inverse of depth.
-      acc_map: [batch_size]. Accumulated opacity (alpha) along a ray.
+      rgb_map: [B, 3]. Predicted RGB values for rays.
+      disp_map: [B]. Disparity map. Inverse of depth.
+      acc_map: [B]. Accumulated opacity (alpha) along a ray.
       extras: dict with everything returned by render_rays().
     """
     if c2w is not None:
-        # special case to render full image
-        rays_o, rays_d = get_rays(H, W, focal, c2w)
+        rays_o, rays_d = get_rays(H, W, focal, c2w) # special case to render full image
     else:
-        # use provided ray batch
-        rays_o, rays_d = rays
+        rays_o, rays_d = rays   # use provided ray batch
 
     if use_viewdirs:
         # provide ray directions as input
@@ -137,7 +135,7 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None, ndc=True, near=0., f
     return ret_list + [ret_dict]
 
 
-def render_path(render_poses, hwf, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
+def render_path(render_poses, hwf, chunk, render_kwargs, savedir=None, render_factor=0):
     H, W, focal = hwf
     if render_factor!=0:
         # Render downsampled for speed
@@ -150,35 +148,26 @@ def render_path(render_poses, hwf, chunk, render_kwargs, gt_imgs=None, savedir=N
 
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
-        # print(i, time.time() - t)
-        t = time.time()
         rgb, disp, acc, depth, extras = render(H, W, focal, chunk=chunk, c2w=c2w[:3,:4], retraw=True, **render_kwargs)
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
-        if i==0:
-            print(rgb.shape, disp.shape)
 
-        """if gt_imgs is not None and render_factor==0:
-            p = -10. * np.log10(np.mean(np.square(rgb.cpu().numpy() - gt_imgs[i])))
-            print(p)
-        """
         if savedir is not None:
             rgb8 = to8b(rgbs[-1])
             rgb8[np.isnan(rgb8)] = 0
-            filename = os.path.join(savedir, '{:03d}.png'.format(i))
-            imageio.imwrite(filename, rgb8)
+            imageio.imwrite(os.path.join(savedir, '{:03d}.png'.format(i)), img_as_ubyte(rgb8))
             depth = depth.cpu().numpy()
+            imageio.imwrite(os.path.join(savedir, '{:03d}_depth.png'.format(i)), depth)
             print("max:", np.nanmax(depth))
             # depth = depth / 5 * 255
             # depth_color = cv2.applyColorMap(depth.astype(np.uint8), cv2.COLORMAP_JET)[:,:,::-1]
             # depth_color[np.isnan(depth_color)] = 0
-            # imageio.imwrite(os.path.join(savedir, '{:03d}_depth.png'.format(i)), depth_color)
-            imageio.imwrite(os.path.join(savedir, '{:03d}_depth.png'.format(i)), depth)
             np.savez(os.path.join(savedir, '{:03d}.npz'.format(i)), rgb=rgb.cpu().numpy(), disp=disp.cpu().numpy(), acc=acc.cpu().numpy(), depth=depth)
-
+            
+    print('Saved rendered test set')
+    print("Rendering time: {:.4f}s for {} views.".format(time.time() - t, len(render_poses)))
     rgbs = np.stack(rgbs, 0)
     disps = np.stack(disps, 0)
-
     return rgbs, disps
 
 def render_test_ray(rays_o, rays_d, hwf, ndc, near, far, use_viewdirs, N_samples, network, network_query_fn, **kwargs):
@@ -438,6 +427,16 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples, retraw=False
     return ret
 
 
+
+
+
+
+
+
+
+
+
+
 def train(args):
     if args.dataset_type == 'colmap_llff':
         train_imgs, test_imgs, train_poses, test_poses, render_poses, depth_gts, bds = load_colmap_llff(args.datadir)
@@ -489,7 +488,6 @@ def train(args):
         if args.no_ndc:
             near = np.ndarray.min(bds) * .9
             far = np.ndarray.max(bds) * 1.
-            
         else:
             near = 0.
             far = 1.
@@ -529,7 +527,7 @@ def train(args):
         render_poses = np.array(poses[i_train])
     elif args.render_mypath:
         # render_poses = generate_renderpath(np.array(poses[i_test]), focal)
-        render_poses = generate_renderpath(np.array(poses[i_test])[3:4], focal, sc=1)
+        render_poses = generate_renderpath(np.array(poses[i_test])[5:9], focal, scale=3)
 
     # Create log dir and copy the config file
     basedir = args.basedir
@@ -557,18 +555,16 @@ def train(args):
     render_kwargs_test.update(bds_dict)
 
     # Move testing data to GPU
-    render_poses = torch.Tensor(render_poses).to(device)
+    render_poses = torch.from_numpy(np.array(render_poses)).to(device)
 
-    # Short circuit if only rendering out from trained model
+    # ============ if only rendering out from trained model ============
     if args.render_only:
         print('RENDER ONLY')
         with torch.no_grad():
             if args.render_test:
-                # render_test switches to test poses
-                images = images[i_test]
+                images = images[i_test] # render_test switches to test poses
             else:
-                # Default is smoother render_poses path
-                images = None
+                images = None   # Default is smoother render_poses path
 
             if args.render_test:
                 testsavedir = os.path.join(basedir, expname, 'renderonly_{}_{:06d}'.format('test', start))
@@ -595,7 +591,7 @@ def train(args):
                 print("Estimated depth:", depth_maps[0].cpu().numpy())
                 print(depth_gts[index_pose]['coord'])
             else:
-                rgbs, disps = render_path(render_poses, hwf, args.chunk, render_kwargs_test, gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
+                rgbs, disps = render_path(render_poses, hwf, args.chunk, render_kwargs_test, savedir=testsavedir, render_factor=args.render_factor)
                 print('Done rendering', testsavedir)
                 imageio.mimwrite(os.path.join(testsavedir, 'rgb.mp4'), to8b(rgbs), fps=30, quality=8)
                 disps[np.isnan(disps)] = 0
@@ -603,7 +599,7 @@ def train(args):
                 imageio.mimwrite(os.path.join(testsavedir, 'disp.mp4'), to8b(disps / np.percentile(disps, 95)), fps=30, quality=8)
             return
 
-    # Prepare raybatch tensor if batching random rays
+    # ============ Prepare raybatch tensor if batching random rays ============
     if not args.colmap_depth:
         N_rgb = args.N_rand
     else:
@@ -663,22 +659,21 @@ def train(args):
     if use_batching:
         # rays_rgb = torch.Tensor(rays_rgb).to(device)
         # rays_depth = torch.Tensor(rays_depth).to(device) if rays_depth is not None else None
-        raysRGB_iter = iter(DataLoader(RayDataset(rays_rgb), batch_size = N_rgb, shuffle=True, num_workers=0))
-        raysDepth_iter = iter(DataLoader(RayDataset(rays_depth), batch_size = N_depth, shuffle=True, num_workers=0)) if rays_depth is not None else None
+        raysRGB_iter = iter(DataLoader(
+            RayDataset(rays_rgb), batch_size = N_rgb, shuffle=True, num_workers=0
+            ))
+        raysDepth_iter = iter(DataLoader(
+            RayDataset(rays_depth), batch_size = N_depth, shuffle=True, num_workers=0
+            )) if rays_depth is not None else None
 
+    # ======================== Begin Training ========================
     N_iters = args.N_iters + 1
-    print('Begin')
-    print('TRAIN views are', i_train)
-    print('TEST views are', i_test)
-    print('VAL views are', i_val)
-
+    print(f"Begin - TRAIN views: {i_train}, TEST views: {i_test}, VAL views: {i_val}")
     # Summary writers
     # writer = SummaryWriter(os.path.join(basedir, 'summaries', expname))
-    
     start = start + 1
     for i in trange(start, N_iters):
         time0 = time.time()
-
         # Sample random ray batch
         if use_batching:
             # Random over all images
@@ -725,15 +720,19 @@ def train(args):
                 if i < args.precrop_iters:
                     dH = int(H//2 * args.precrop_frac)
                     dW = int(W//2 * args.precrop_frac)
-                    coords = torch.stack(
-                        torch.meshgrid(
+                    coords = torch.stack(torch.meshgrid(
                             torch.linspace(H//2 - dH, H//2 + dH - 1, 2*dH), 
-                            torch.linspace(W//2 - dW, W//2 + dW - 1, 2*dW)
-                        ), -1)
+                            torch.linspace(W//2 - dW, W//2 + dW - 1, 2*dW),
+                            indexing="ij"), -1
+                        )
                     if i == start:
                         print(f"[Config] Center cropping of size {2*dH} x {2*dW} is enabled until iter {args.precrop_iters}")                
                 else:
-                    coords = torch.stack(torch.meshgrid(torch.linspace(0, H-1, H), torch.linspace(0, W-1, W)), -1)  # (H, W, 2)
+                    coords = torch.stack(torch.meshgrid(
+                        torch.linspace(0, H-1, H),
+                        torch.linspace(0, W-1, W),
+                        indexing="ij"), -1
+                        )  # (H, W, 2)
 
                 coords = torch.reshape(coords, [-1,2])  # (H * W, 2)
                 select_inds = np.random.choice(coords.shape[0], size=[N_rgb], replace=False)  # (N_rand,)
@@ -743,14 +742,14 @@ def train(args):
                 batch_rays = torch.stack([rays_o, rays_d], 0) # (2, N_rand, 3)
                 target_s = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
 
-        #####  Core optimization loop  #####
+        ########  Core optimization loop  ########
         # timer_0 = time.perf_counter()
 
         if args.colmap_depth:
             N_batch = batch_rays.shape[1]
             batch_rays = torch.cat([batch_rays, batch_rays_depth], 1) # (2, 2 * N_rand, 3)
-
         # timer_concate = time.perf_counter()
+
         rgb, disp, acc, depth, extras = render(
             H, W, focal, chunk=args.chunk, rays=batch_rays,
             verbose=i < 10, retraw=True, **render_kwargs_train)
@@ -766,11 +765,10 @@ def train(args):
             depth, depth_col = depth[:N_batch], depth[N_batch:]
             extras = {x:extras[x][:N_batch] for x in extras}
             extras_col = {x:extras[x][N_batch:] for x in extras}
-
         elif args.colmap_depth and args.depth_with_rgb:
             depth_col = depth
-
         # timer_split = time.perf_counter()
+
         optimizer.zero_grad()
         img_loss = img2mse(rgb, target_s)
         depth_loss = 0
@@ -792,7 +790,6 @@ def train(args):
         trans = extras['raw'][...,-1]
         loss = img_loss + args.depth_lambda * depth_loss + args.sigma_lambda * sigma_loss
         psnr = mse2psnr(img_loss)
-
         # timer_loss = time.perf_counter()
 
         if 'rgb0' in extras and not args.no_coarse:
@@ -802,13 +799,8 @@ def train(args):
 
         loss.backward()
         optimizer.step()
-
         # timer_backward = time.perf_counter()
-        # print('\nconcate:',timer_concate-timer_0)
-        # print('iter',timer_iter-timer_concate)
-        # print('split',timer_split-timer_iter)
-        # print('loss',timer_loss-timer_split)
-        # print('backward',timer_backward-timer_loss)
+
         # concate_time.append(timer_concate-timer_0)
         # iter_time.append(timer_iter-timer_concate)
         # split_time.append(timer_split-timer_iter)
@@ -824,13 +816,13 @@ def train(args):
         #     print('total:',np.mean(concate_time)+np.mean(iter_time)+np.mean(split_time)+np.mean(loss_time)+np.mean(backward_time))
 
         # NOTE: IMPORTANT!
-        ###   update learning rate   ###
+        ########   update learning rate   ########
         decay_rate = 0.1
         decay_steps = args.lrate_decay * 1000
         new_lrate = args.lrate * (decay_rate ** (global_step / decay_steps))
         for param_group in optimizer.param_groups:
             param_group['lr'] = new_lrate
-        ################################
+        ##########################################
 
         dt = time.time()-time0
         # print(f"Step: {global_step}, Loss: {loss}, Time: {dt}")
@@ -847,12 +839,45 @@ def train(args):
             }, path)
             print('Saved checkpoints at', path)
 
+        if i%args.i_print==0:
+            tqdm.write(f"[Train] Iter: {i}, Loss: {loss.item()}, PSNR: {psnr.item()}")
+        """
+            with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_print):
+                tf.contrib.summary.histogram('tran', trans)
+                if args.N_importance > 0:
+                    tf.contrib.summary.scalar('psnr0', psnr0)
+            if i%args.i_img==0:
+                img_i=np.random.choice(i_val)# Log a rendered validation view to Tensorboard
+                target = images[img_i]
+                pose = poses[img_i, :3,:4]
+
+                if args.N_importance > 0:
+                    with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
+                        tf.contrib.summary.image('rgb0', to8b(extras['rgb0'])[tf.newaxis])
+                        tf.contrib.summary.image('disp0', extras['disp0'][tf.newaxis,...,tf.newaxis])
+                        tf.contrib.summary.image('z_std', extras['z_std'][tf.newaxis,...,tf.newaxis])
+        """
+
+        if i%args.i_testset==0 and i > 0 and len(i_test) > 0:
+            testsavedir = os.path.join(basedir, expname, 'testset_{:06d}'.format(i))
+            os.makedirs(testsavedir, exist_ok=True)
+            # print('test poses shape', poses[i_test].shape)
+            with torch.no_grad():
+                rgbs, disps = render_path(
+                    torch.tensor(poses[i_test]).to(device), hwf, args.chunk,
+                    render_kwargs_test, savedir=testsavedir
+                    )
+
+            test_loss = img2mse(torch.Tensor(rgbs).to(device), images[i_test])
+            test_psnr = mse2psnr(test_loss)
+            tqdm.write(f"[Test] Iter: {i}, Loss: {test_loss.item()}, PSNR: {test_psnr.item()}")
+
         if args.i_video > 0 and i%args.i_video==0 and i > 0:
             # Turn on testing mode
             with torch.no_grad():
                 rgbs, disps = render_path(render_poses, hwf, args.chunk, render_kwargs_test)
             print('Done, saving', rgbs.shape, disps.shape)
-            moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_'.format(expname, i))
+            moviebase = os.path.join(basedir, expname, '{}_{:06d}_'.format(expname, i))
             imageio.mimwrite(moviebase + 'rgb.mp4', to8b(rgbs), fps=30, quality=8)
             imageio.mimwrite(moviebase + 'disp.mp4', to8b(disps / np.nanmax(disps)), fps=30, quality=8)
 
@@ -863,67 +888,15 @@ def train(args):
             #     render_kwargs_test['c2w_staticcam'] = None
             #     imageio.mimwrite(moviebase + 'rgb_still.mp4', to8b(rgbs_still), fps=30, quality=8)
 
-        if i%args.i_testset==0 and i > 0 and len(i_test) > 0:
-            testsavedir = os.path.join(basedir, expname, 'testset_{:06d}'.format(i))
-            os.makedirs(testsavedir, exist_ok=True)
-            print('test poses shape', poses[i_test].shape)
-            with torch.no_grad():
-                rgbs, disps = render_path(torch.tensor(poses[i_test]).to(device), hwf, args.chunk, render_kwargs_test, gt_imgs=images[i_test], savedir=testsavedir)
-            print('Saved test set')
-
-            filenames = [os.path.join(testsavedir, '{:03d}.png'.format(k)) for k in range(len(i_test))]
-            test_loss = img2mse(torch.Tensor(rgbs).to(device), images[i_test])
-            test_psnr = mse2psnr(test_loss)
-
-    
-        if i%args.i_print==0:
-            tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()}")
-        """
-            print(expname, i, psnr.numpy(), loss.numpy(), global_step.numpy())
-            print('iter time {:.05f}'.format(dt))
-            with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_print):
-                tf.contrib.summary.scalar('loss', loss)
-                tf.contrib.summary.scalar('psnr', psnr)
-                tf.contrib.summary.histogram('tran', trans)
-                if args.N_importance > 0:
-                    tf.contrib.summary.scalar('psnr0', psnr0)
-
-            if i%args.i_img==0:
-                # Log a rendered validation view to Tensorboard
-                img_i=np.random.choice(i_val)
-                target = images[img_i]
-                pose = poses[img_i, :3,:4]
-                with torch.no_grad():
-                    rgb, disp, acc, extras = render(H, W, focal, chunk=args.chunk, c2w=pose,
-                                                        **render_kwargs_test)
-                psnr = mse2psnr(img2mse(rgb, target))
-
-                with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
-                    tf.contrib.summary.image('rgb', to8b(rgb)[tf.newaxis])
-                    tf.contrib.summary.image('disp', disp[tf.newaxis,...,tf.newaxis])
-                    tf.contrib.summary.image('acc', acc[tf.newaxis,...,tf.newaxis])
-                    tf.contrib.summary.scalar('psnr_holdout', psnr)
-                    tf.contrib.summary.image('rgb_holdout', target[tf.newaxis])
-
-                if args.N_importance > 0:
-                    with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
-                        tf.contrib.summary.image('rgb0', to8b(extras['rgb0'])[tf.newaxis])
-                        tf.contrib.summary.image('disp0', extras['disp0'][tf.newaxis,...,tf.newaxis])
-                        tf.contrib.summary.image('z_std', extras['z_std'][tf.newaxis,...,tf.newaxis])
-        """
         global_step += 1
 
 
 def config_parser():
     parser = configargparse.ArgumentParser()
-    parser.add_argument('--config', is_config_file=True, 
-                        help='config file path')
-    parser.add_argument("--expname", type=str, 
-                        help='experiment name')
-    parser.add_argument("--basedir", type=str, default='./logs/', 
-                        help='where to store ckpts and logs')
-    parser.add_argument("--datadir", type=str, default='./data_LLFF/fern_2view', 
-                        help='input data directory')
+    parser.add_argument('--config', is_config_file=True, help='config file path')
+    parser.add_argument("--expname", type=str, help='experiment name')
+    parser.add_argument("--basedir", type=str, default='./logs/', help='where to store ckpts and logs')
+    parser.add_argument("--datadir", type=str, default='./data/8v_400_5_435', help='input data directory')
 
     # training options
     parser.add_argument("--netdepth", type=int, default=8, 
@@ -969,18 +942,13 @@ def config_parser():
     parser.add_argument("--raw_noise_std", type=float, default=0., 
                         help='std dev of noise added to regularize sigma_a output, 1e0 recommended')
 
-    parser.add_argument("--render_only", action='store_true', 
-                        help='do not optimize, reload weights and render out render_poses path')
-    parser.add_argument("--render_test", action='store_true', 
-                        help='render the test set instead of render_poses path')
-    parser.add_argument("--render_test_ray", action='store_true', 
-                        help='render the test set instead of render_poses path')
-    parser.add_argument("--render_train", action='store_true', 
-                        help='render the train set instead of render_poses path')  
-    parser.add_argument("--render_mypath", action='store_true', 
-                        help='render the test path')         
+    parser.add_argument("--render_only", action='store_true',help='reload weights and render out render_poses path')
+    parser.add_argument("--render_test", action='store_true', help='render the path of test set')
+    parser.add_argument("--render_test_ray", action='store_true', help='render the path of test set')
+    parser.add_argument("--render_train", action='store_true', help='render the path of train set')  
+    parser.add_argument("--render_mypath", action='store_true', help='render the self-generated path')         
     parser.add_argument("--render_factor", type=int, default=0, 
-                        help='downsampling factor to speed up rendering, set 4 or 8 for fast preview')
+                        help='downsampling factor to speed up rendering (4/8)')
 
     # training options
     parser.add_argument("--precrop_iters", type=int, default=0,
@@ -990,44 +958,30 @@ def config_parser():
 
     # dataset options
     parser.add_argument("--dataset_type", type=str, default='llff', 
-                        help='options: llff / blender / deepvoxels')
+                        help='options: colmap_llff / llff / dtu')
     parser.add_argument("--testskip", type=int, default=8, 
-                        help='will load 1/N images from test/val sets, useful for large datasets like deepvoxels')
+                        help='load 1/N images from test/val sets, for large datasets')
 
     ## deepvoxels flags
-    parser.add_argument("--shape", type=str, default='greek', 
-                        help='options : armchair / cube / greek / vase')
-
+    parser.add_argument("--shape", type=str, default='greek', help='options : armchair / cube / greek / vase')
     ## blender flags
-    parser.add_argument("--white_bkgd", action='store_true', 
-                        help='set to render synthetic data on a white bkgd (always use for dvoxels)')
-    parser.add_argument("--half_res", action='store_true', 
-                        help='load blender synthetic data at 400x400 instead of 800x800')
-
+    parser.add_argument("--white_bkgd", action='store_true', help='render synthetic data on a white bkgd (always use for dvoxels)')
+    parser.add_argument("--half_res", action='store_true', help='load blender synthetic data at 400x400 instead of 800x800')
     ## llff flags
-    parser.add_argument("--factor", type=int, default=8, 
-                        help='downsample factor for LLFF images')
+    parser.add_argument("--factor", type=int, default=8, help='downsample factor for LLFF images')
     parser.add_argument("--no_ndc", action='store_true', 
                         help='do not use normalized device coordinates (set for non-forward facing scenes)')
-    parser.add_argument("--lindisp", action='store_true', 
-                        help='sampling linearly in disparity rather than depth')
-    parser.add_argument("--spherify", action='store_true', 
-                        help='set for spherical 360 scenes')
-    parser.add_argument("--llffhold", type=int, default=4, 
-                        help='will take every 1/N images as LLFF test set, paper uses 8')
+    parser.add_argument("--lindisp", action='store_true', help='sampling linearly in disparity rather than depth')
+    parser.add_argument("--spherify", action='store_true', help='set for spherical 360 scenes')
+    parser.add_argument("--llffhold", type=int, default=8, help='take every 1/N images as LLFF test set')
+
 
     # logging/saving options
-    parser.add_argument("--i_print",   type=int, default=100, 
-                        help='frequency of console printout and metric loggin')
-    parser.add_argument("--i_img",     type=int, default=500, 
-                        help='frequency of tensorboard image logging')
-    parser.add_argument("--i_weights", type=int, default=10000, 
-                        help='frequency of weight ckpt saving')
-    parser.add_argument("--i_testset", type=int, default=50000, 
-                        help='frequency of testset saving')
-    parser.add_argument("--i_video",   type=int, default=50000, 
-                        help='frequency of render_poses video saving')
-    
+    parser.add_argument("--i_print",   type=int, default=100, help='frequency of console printout and metric loggin')
+    parser.add_argument("--i_img",     type=int, default=500, help='frequency of tensorboard image logging')
+    parser.add_argument("--i_weights", type=int, default=10000, help='frequency of weight ckpt saving')
+    parser.add_argument("--i_testset", type=int, default=10000, help='frequency of testset saving')
+    parser.add_argument("--i_video",   type=int, default=50000, help='frequency of render_poses video saving')
     # debug
     parser.add_argument("--debug",  action='store_true')
 
@@ -1049,8 +1003,6 @@ def config_parser():
     parser.add_argument("--depth_rays_prop", type=float, default=0.5, help="Proportion of depth rays.")
     return parser
 
-
-# python run_nerf.py --config configs/fern_dsnerf.txt --render_only
 
 if __name__=='__main__':
     # torch.set_default_tensor_type('torch.cuda.FloatTensor')
