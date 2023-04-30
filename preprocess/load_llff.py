@@ -438,7 +438,8 @@ def load_colmap_llff(basedir):
     train_poses = np.load(basedir / 'train_poses.npy')
     test_poses = np.load(basedir / 'test_poses.npy')
     video_poses = np.load(basedir / 'video_poses.npy')
-    depth_data = np.load(basedir / 'train_depths.npy', allow_pickle=True)
+    depth_data = np.load(basedir / 'train_depths.npz', allow_pickle=True)
+    depth_data = depth_data[depth_data.files[0]]
     bds = np.load(basedir / 'bds.npy')
 
     return train_imgs, test_imgs, train_poses, test_poses, video_poses, depth_data, bds

@@ -20,7 +20,7 @@ from preprocess.load_dtu import load_dtu_data
 from preprocess.data import RayDataset
 from loss import SigmaLoss
 from run_nerf_helpers import *
-from utils.generate_renderpath import generate_renderpath
+from utils.generate_renderpath import generate_renderpath, Slerp_path
 
 
 # concate_time, iter_time, split_time, loss_time, backward_time = [], [], [], [], []
@@ -312,19 +312,15 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples, retraw=False
                 raw_noise_std=0., verbose=False, pytest=False, sigma_loss=None):
     """Volumetric rendering.
     Args:
-      ray_batch: array of shape [batch_size, ...]. All information necessary
-        for sampling along a ray, including: ray origin, ray direction, min
-        dist, max dist, and unit-magnitude viewing direction.
-      network_fn: function. Model for predicting RGB and density at each point
-        in space.
+      ray_batch: array of shape [batch_size, ...]. All information necessary for sampling along a ray, 
+        including: ray origin, ray direction, min dist, max dist, and unit-magnitude viewing direction.
+      network_fn: Model for predicting RGB and density at each point in space.
       network_query_fn: function used for passing queries to network_fn.
       N_samples: int. Number of different times to sample along each ray.
       retraw: bool. If True, include model's raw, unprocessed predictions.
       lindisp: bool. If True, sample linearly in inverse depth rather than in depth.
-      perturb: float, 0 or 1. If non-zero, each ray is sampled at stratified
-        random points in time.
-      N_importance: int. Number of additional times to sample along each ray.
-        These samples are only passed to network_fine.
+      perturb: float, 0 or 1. If non-zero, each ray is sampled at stratified random points in time.
+      N_importance: int. Number of additional times to sample along each ray.(only passed to network_fine)
       network_fine: "fine" network with same spec as network_fn.
       white_bkgd: bool. If True, assume a white background.
       raw_noise_std: ...
@@ -440,24 +436,23 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples, retraw=False
 def train(args):
     if args.dataset_type == 'colmap_llff':
         train_imgs, test_imgs, train_poses, test_poses, render_poses, depth_gts, bds = load_colmap_llff(args.datadir)
-        poses = np.concatenate([train_poses, test_poses], axis=0)
-        images = np.concatenate([train_imgs, test_imgs], axis=0)
         hwf = train_poses[0, :3, -1]
         train_poses = train_poses[:, :3, :4]
         test_poses = test_poses[:, :3, :4]
-        poses = poses[:, :3, :4]
-        print('Loaded colmap llff', images.shape, render_poses.shape, hwf, args.datadir)
+        poses = np.concatenate([train_poses, test_poses], axis=0)
+        images = np.concatenate([train_imgs, test_imgs], axis=0)
+        print(f'Loaded colmap llff.\nimg:{images.shape}\nrender pose:{render_poses.shape}\n\
+              (height, width, focal_len):{hwf}\n=====================')
         i_train = list(range(train_poses.shape[0]))
         i_test = list(range(train_poses.shape[0], poses.shape[0]))
         i_val = i_test
-        print('DEFINING BOUNDS')
+
         if args.no_ndc:
             near = np.ndarray.min(bds) * .9
             far = np.ndarray.max(bds) * 1.
         else:
             near = 0.
             far = 1.
-        print('NEAR FAR', near, far)
     elif args.dataset_type == 'llff':
         if args.colmap_depth:
             depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75)
@@ -465,7 +460,8 @@ def train(args):
             args.datadir, args.factor, recenter=True, bd_factor=.75, spherify=args.spherify)
         hwf = poses[0,:3,-1]
         poses = poses[:,:3,:4]
-        print('Loaded llff', images.shape, render_poses.shape, hwf, args.datadir)
+        print(f'Loaded llff.\nimg:{images.shape}\nrender pose:{render_poses.shape}\n\
+              (height, width, focal_len):{hwf}\n=====================')
         if not isinstance(i_test, list):
             i_test = [i_test]
 
@@ -484,17 +480,16 @@ def train(args):
             i_train = np.array([i for i in args.train_scene if
                         (i not in i_test and i not in i_val)])
 
-        print('DEFINING BOUNDS')
         if args.no_ndc:
             near = np.ndarray.min(bds) * .9
             far = np.ndarray.max(bds) * 1.
         else:
             near = 0.
             far = 1.
-        print('NEAR FAR', near, far)
     elif args.dataset_type == 'dtu':
         images, poses, hwf = load_dtu_data(args.datadir)
-        print('Loaded DTU', images.shape, poses.shape, hwf, args.datadir)
+        print(f'Loaded dtu.\nimg:{images.shape}\nrender pose:{render_poses.shape}\n\
+              (height, width, focal_len):{hwf}\n=====================')
         if args.test_scene is not None:
             i_test = np.array([i for i in args.test_scene])
 
@@ -512,21 +507,24 @@ def train(args):
         far = 5.0
         if args.colmap_depth:
             depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75)
+        
     else:
         print('Unknown dataset type', args.dataset_type, 'exiting')
         return
-
+    
+    print(f'Boundarys: NEAR-{near} FAR-{far}')
     # Cast intrinsics to right types
     H, W, focal = hwf
     H, W = int(H), int(W)
     hwf = [H, W, focal]
 
+    # set render path, if not apply, use origin render path
     if args.render_test:
         render_poses = np.array(poses[i_test])
     elif args.render_train:
-        render_poses = np.array(poses[i_train])
+        # render_poses = np.array(poses[i_train])
+        render_poses = Slerp_path(np.array(poses[i_train]), 3)
     elif args.render_mypath:
-        # render_poses = generate_renderpath(np.array(poses[i_test]), focal)
         render_poses = generate_renderpath(np.array(poses[i_test])[5:9], focal, scale=3)
 
     # Create log dir and copy the config file
@@ -559,7 +557,7 @@ def train(args):
 
     # ============ if only rendering out from trained model ============
     if args.render_only:
-        print('RENDER ONLY')
+        print('========== RENDER ONLY ==========')
         with torch.no_grad():
             if args.render_test:
                 images = images[i_test] # render_test switches to test poses
@@ -573,7 +571,6 @@ def train(args):
             else:
                 testsavedir = os.path.join(basedir, expname, 'renderonly_{}_{:06d}'.format('path', start))
             os.makedirs(testsavedir, exist_ok=True)
-            print('test poses shape', render_poses.shape)
 
             if args.render_test_ray:
                 # rays_o, rays_d = get_rays(H, W, focal, render_poses[0])
@@ -587,16 +584,26 @@ def train(args):
                 # visualize_sigma(sigma[0, :].cpu().numpy(), z_vals[0, :].cpu().numpy(), os.path.join(testsavedir, 'rays.png'))
                 for k in range(20):
                     visualize_sigma(weights[k*100, :].cpu().numpy(), z_vals[k*100, :].cpu().numpy(), os.path.join(testsavedir, f'rays_weights_%d.png' % k))
-                print("colmap depth:", depth_gts[index_pose]['depth'][0])
+                print("Colmap depth:", depth_gts[index_pose]['depth'][0])
                 print("Estimated depth:", depth_maps[0].cpu().numpy())
                 print(depth_gts[index_pose]['coord'])
             else:
-                rgbs, disps = render_path(render_poses, hwf, args.chunk, render_kwargs_test, savedir=testsavedir, render_factor=args.render_factor)
-                print('Done rendering', testsavedir)
-                imageio.mimwrite(os.path.join(testsavedir, 'rgb.mp4'), to8b(rgbs), fps=30, quality=8)
+                poses_length = render_poses.shape[0]
+                rgbs, disps = render_path(
+                    render_poses[:poses_length//2], hwf, args.chunk, render_kwargs_test, 
+                    savedir=os.path.join(testsavedir, "1"), render_factor=args.render_factor
+                    )
+                imageio.mimwrite(os.path.join(testsavedir, 'rgb1.mp4'), to8b(rgbs), fps=30, quality=8)
                 disps[np.isnan(disps)] = 0
-                print('Depth stats', np.mean(disps), np.max(disps), np.percentile(disps, 95))
-                imageio.mimwrite(os.path.join(testsavedir, 'disp.mp4'), to8b(disps / np.percentile(disps, 95)), fps=30, quality=8)
+                # print('Depth stats', np.mean(disps), np.max(disps), np.percentile(disps, 95))
+                imageio.mimwrite(os.path.join(testsavedir, 'disp1.mp4'), to8b(disps / np.percentile(disps, 95)), fps=30, quality=8)
+                rgbs, disps = render_path(
+                    render_poses[poses_length//2:], hwf, args.chunk, render_kwargs_test, 
+                    savedir=os.path.join(testsavedir, "2"), render_factor=args.render_factor
+                    )
+                imageio.mimwrite(os.path.join(testsavedir, 'rgb2.mp4'), to8b(rgbs), fps=30, quality=8)
+                disps[np.isnan(disps)] = 0
+                imageio.mimwrite(os.path.join(testsavedir, 'disp2.mp4'), to8b(disps / np.percentile(disps, 95)), fps=30, quality=8)
             return
 
     # ============ Prepare raybatch tensor if batching random rays ============
@@ -669,8 +676,8 @@ def train(args):
     # ======================== Begin Training ========================
     N_iters = args.N_iters + 1
     print(f"Begin - TRAIN views: {i_train}, TEST views: {i_test}, VAL views: {i_val}")
-    # Summary writers
-    # writer = SummaryWriter(os.path.join(basedir, 'summaries', expname))
+
+    writer = SummaryWriter(os.path.join(basedir, 'summary'))
     start = start + 1
     for i in trange(start, N_iters):
         time0 = time.time()
@@ -799,6 +806,9 @@ def train(args):
 
         loss.backward()
         optimizer.step()
+
+        print("GPU memory used (optimizer.step): ")
+        print(torch.cuda.memory_allocated(device) / 1024**2, "MB")
         # timer_backward = time.perf_counter()
 
         # concate_time.append(timer_concate-timer_0)
@@ -825,9 +835,10 @@ def train(args):
         ##########################################
 
         dt = time.time()-time0
-        # print(f"Step: {global_step}, Loss: {loss}, Time: {dt}")
 
         #####           end            #####
+        writer.add_scalar("Training Loss", loss.item(), i)
+        writer.add_scalar("Training PSNR", psnr.item(), i)
         # Rest is logging
         if i%args.i_weights==0:
             path = os.path.join(basedir, expname, '{:06d}.tar'.format(i))
@@ -870,16 +881,26 @@ def train(args):
 
             test_loss = img2mse(torch.Tensor(rgbs).to(device), images[i_test])
             test_psnr = mse2psnr(test_loss)
+            writer.add_scalar("Testing Loss", test_loss.item(), i)
+            writer.add_scalar("Testing PSNR", test_psnr.item(), i)
             tqdm.write(f"[Test] Iter: {i}, Loss: {test_loss.item()}, PSNR: {test_psnr.item()}")
 
         if args.i_video > 0 and i%args.i_video==0 and i > 0:
             # Turn on testing mode
             with torch.no_grad():
-                rgbs, disps = render_path(render_poses, hwf, args.chunk, render_kwargs_test)
-            print('Done, saving', rgbs.shape, disps.shape)
-            moviebase = os.path.join(basedir, expname, '{}_{:06d}_'.format(expname, i))
-            imageio.mimwrite(moviebase + 'rgb.mp4', to8b(rgbs), fps=30, quality=8)
-            imageio.mimwrite(moviebase + 'disp.mp4', to8b(disps / np.nanmax(disps)), fps=30, quality=8)
+                moviebase = os.path.join(basedir, expname, '{}_{:06d}_'.format(expname, i))
+                poses_length = render_poses.shape[0]
+                video_pieces = 7
+                for piece in range(video_pieces):
+                    rgbs, disps = render_path(render_poses[poses_length*piece//video_pieces:poses_length*(piece+1)//video_pieces], hwf, args.chunk, render_kwargs_test)
+                    print("GPU usage (image rendering):")
+                    print(torch.cuda.memory_allocated() / 1024**2, "MB")
+                    imageio.mimwrite(moviebase + 'rgb%d.mp4'%piece, to8b(rgbs), fps=30, quality=8)
+                    imageio.mimwrite(moviebase + 'disp%d.mp4'%piece, to8b(disps / np.nanmax(disps)), fps=30, quality=8)
+
+                # rgbs, disps = render_path(render_poses[poses_length//2:], hwf, args.chunk, render_kwargs_test)
+                # imageio.mimwrite(moviebase + 'rgb2.mp4', to8b(rgbs), fps=30, quality=8)
+                # imageio.mimwrite(moviebase + 'disp2.mp4', to8b(disps / np.nanmax(disps)), fps=30, quality=8)
 
             # if args.use_viewdirs:
             #     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3,:4]
@@ -889,6 +910,8 @@ def train(args):
             #     imageio.mimwrite(moviebase + 'rgb_still.mp4', to8b(rgbs_still), fps=30, quality=8)
 
         global_step += 1
+
+    writer.close()
 
 
 def config_parser():
