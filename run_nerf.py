@@ -162,7 +162,11 @@ def render_path(render_poses, hwf, chunk, render_kwargs, savedir=None, render_fa
             # depth = depth / 5 * 255
             # depth_color = cv2.applyColorMap(depth.astype(np.uint8), cv2.COLORMAP_JET)[:,:,::-1]
             # depth_color[np.isnan(depth_color)] = 0
-            np.savez(os.path.join(savedir, '{:03d}.npz'.format(i)), rgb=rgb.cpu().numpy(), disp=disp.cpu().numpy(), acc=acc.cpu().numpy(), depth=depth)
+            # np.savez(
+            #     os.path.join(savedir, '{:03d}.npz'.format(i)),
+            #     rgb=rgb.cpu().numpy(), disp=disp.cpu().numpy(),
+            #     acc=acc.cpu().numpy(), depth=depth
+            #     )
             
     print('Saved rendered test set')
     print("Rendering time: {:.4f}s for {} views.".format(time.time() - t, len(render_poses)))
@@ -429,10 +433,6 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples, retraw=False
 
 
 
-
-
-
-
 def train(args):
     if args.dataset_type == 'colmap_llff':
         train_imgs, test_imgs, train_poses, test_poses, render_poses, depth_gts, bds = load_colmap_llff(args.datadir)
@@ -441,8 +441,11 @@ def train(args):
         test_poses = test_poses[:, :3, :4]
         poses = np.concatenate([train_poses, test_poses], axis=0)
         images = np.concatenate([train_imgs, test_imgs], axis=0)
-        print(f'Loaded colmap llff.\nimg:{images.shape}\nrender pose:{render_poses.shape}\n\
-              (height, width, focal_len):{hwf}\n=====================')
+        print(f'Loaded colmap llff.\n \
+              img shape:{images.shape}\n \
+              render pose:{render_poses.shape}\n \
+              (height, width, focal_len):{hwf}\n \
+              =====================')
         i_train = list(range(train_poses.shape[0]))
         i_test = list(range(train_poses.shape[0], poses.shape[0]))
         i_val = i_test
@@ -545,15 +548,16 @@ def train(args):
     render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)
 
     global_step = start
-    bds_dict = {
-        'near' : near,
-        'far' : far,
-    }
+    bds_dict = {'near' : near,'far' : far,}
     render_kwargs_train.update(bds_dict)
     render_kwargs_test.update(bds_dict)
 
     # Move testing data to GPU
     render_poses = torch.from_numpy(np.array(render_poses)).to(device)
+
+
+
+
 
     # ============ if only rendering out from trained model ============
     if args.render_only:
@@ -589,6 +593,9 @@ def train(args):
                 print(depth_gts[index_pose]['coord'])
             else:
                 poses_length = render_poses.shape[0]
+                # video_pieces = 2
+                # cut_start = poses_length*piece // video_pieces
+                # cut_end = poses_length*(piece+1) // video_pieces
                 rgbs, disps = render_path(
                     render_poses[:poses_length//2], hwf, args.chunk, render_kwargs_test, 
                     savedir=os.path.join(testsavedir, "1"), render_factor=args.render_factor
@@ -605,6 +612,9 @@ def train(args):
                 disps[np.isnan(disps)] = 0
                 imageio.mimwrite(os.path.join(testsavedir, 'disp2.mp4'), to8b(disps / np.percentile(disps, 95)), fps=30, quality=8)
             return
+
+
+
 
     # ============ Prepare raybatch tensor if batching random rays ============
     if not args.colmap_depth:
@@ -673,11 +683,13 @@ def train(args):
             RayDataset(rays_depth), batch_size = N_depth, shuffle=True, num_workers=0
             )) if rays_depth is not None else None
 
+
+
     # ======================== Begin Training ========================
     N_iters = args.N_iters + 1
     print(f"Begin - TRAIN views: {i_train}, TEST views: {i_test}, VAL views: {i_val}")
 
-    writer = SummaryWriter(os.path.join(basedir, 'summary'))
+    writer = SummaryWriter(os.path.join(basedir, expname, 'summary'))
     start = start + 1
     for i in trange(start, N_iters):
         time0 = time.time()
@@ -806,9 +818,7 @@ def train(args):
 
         loss.backward()
         optimizer.step()
-
-        print("GPU memory used (optimizer.step): ")
-        print(torch.cuda.memory_allocated(device) / 1024**2, "MB")
+        
         # timer_backward = time.perf_counter()
 
         # concate_time.append(timer_concate-timer_0)
@@ -816,7 +826,6 @@ def train(args):
         # split_time.append(timer_split-timer_iter)
         # loss_time.append(timer_loss-timer_split)
         # backward_time.append(timer_backward-timer_loss)
-
         # if i%10 == 0:
         #     print('\nconcate:',np.mean(concate_time))
         #     print('iter',np.mean(iter_time))
@@ -852,6 +861,8 @@ def train(args):
 
         if i%args.i_print==0:
             tqdm.write(f"[Train] Iter: {i}, Loss: {loss.item()}, PSNR: {psnr.item()}")
+            print("GPU memory used (optimizer.step): ")
+            print(torch.cuda.memory_allocated(device) / 1024**2, "MB")
         """
             with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_print):
                 tf.contrib.summary.histogram('tran', trans)
@@ -875,32 +886,32 @@ def train(args):
             # print('test poses shape', poses[i_test].shape)
             with torch.no_grad():
                 rgbs, disps = render_path(
-                    torch.tensor(poses[i_test]).to(device), hwf, args.chunk,
+                    poses[i_test].clone().detach().to(device), hwf, args.chunk,
                     render_kwargs_test, savedir=testsavedir
                     )
 
-            test_loss = img2mse(torch.Tensor(rgbs).to(device), images[i_test])
-            test_psnr = mse2psnr(test_loss)
-            writer.add_scalar("Testing Loss", test_loss.item(), i)
-            writer.add_scalar("Testing PSNR", test_psnr.item(), i)
-            tqdm.write(f"[Test] Iter: {i}, Loss: {test_loss.item()}, PSNR: {test_psnr.item()}")
+                test_loss = img2mse(torch.Tensor(rgbs).to(device), images[i_test])
+                test_psnr = mse2psnr(test_loss)
+                writer.add_scalar("Testing Loss", test_loss.item(), i)
+                writer.add_scalar("Testing PSNR", test_psnr.item(), i)
+                tqdm.write(f"[Test] Iter: {i}, Loss: {test_loss.item()}, PSNR: {test_psnr.item()}")
 
         if args.i_video > 0 and i%args.i_video==0 and i > 0:
             # Turn on testing mode
             with torch.no_grad():
                 moviebase = os.path.join(basedir, expname, '{}_{:06d}_'.format(expname, i))
                 poses_length = render_poses.shape[0]
-                video_pieces = 7
+                video_pieces = 2
                 for piece in range(video_pieces):
-                    rgbs, disps = render_path(render_poses[poses_length*piece//video_pieces:poses_length*(piece+1)//video_pieces], hwf, args.chunk, render_kwargs_test)
+                    cut_start = poses_length*piece // video_pieces
+                    cut_end = poses_length*(piece+1) // video_pieces
+                    rgbs, disps = render_path(render_poses[cut_start : cut_end], hwf, args.chunk, render_kwargs_test)
                     print("GPU usage (image rendering):")
                     print(torch.cuda.memory_allocated() / 1024**2, "MB")
                     imageio.mimwrite(moviebase + 'rgb%d.mp4'%piece, to8b(rgbs), fps=30, quality=8)
                     imageio.mimwrite(moviebase + 'disp%d.mp4'%piece, to8b(disps / np.nanmax(disps)), fps=30, quality=8)
 
                 # rgbs, disps = render_path(render_poses[poses_length//2:], hwf, args.chunk, render_kwargs_test)
-                # imageio.mimwrite(moviebase + 'rgb2.mp4', to8b(rgbs), fps=30, quality=8)
-                # imageio.mimwrite(moviebase + 'disp2.mp4', to8b(disps / np.nanmax(disps)), fps=30, quality=8)
 
             # if args.use_viewdirs:
             #     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3,:4]

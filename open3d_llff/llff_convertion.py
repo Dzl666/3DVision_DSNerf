@@ -33,7 +33,8 @@ def convert(base_dir, testing_hold=5, depth_start=0):
 
     # generate intrinsics
     intrinsics = np.loadtxt(intrinsics_path)[:9]
-    focus = (int)(1e-5 * 1e-3 * (intrinsics[0] + intrinsics[4]))  # original unit: mm?
+    # units: pixel
+    focal = (int)(0.5 * (intrinsics[0] + intrinsics[4]))
     H = cv2.imread(rgb_paths[0]).shape[0]
     W = cv2.imread(rgb_paths[0]).shape[1]
 
@@ -44,13 +45,14 @@ def convert(base_dir, testing_hold=5, depth_start=0):
         # load depth and RGB
         rgb = cv2.imread(rgb_paths[ind])
         print(f"loaded rgb: {str(rgb_paths[ind])}")
-        depth = 1e-3 * np.load(depths_paths[ind])# original unit: mm?
+        # original unit: mm?
+        depth = 1e-3 * np.load(depths_paths[ind])
         print(f"loaded depth: {str(depths_paths[ind])}")
 
         # get current row of intrinsics and concat with HWF
         rgb_row = int(rgb_paths[ind].split("\\")[-1][:-4])
         cur_extrinsics = np.resize(np.array(extrinsics[rgb_row]), (3, 4))
-        cur_pose = np.hstack([cur_extrinsics, np.array([[H], [W], [focus]])])
+        cur_pose = np.hstack([cur_extrinsics, np.array([[H], [W], [focal]])])
 
         if ind % testing_hold == 0:
             test_images.append(rgb)
@@ -89,6 +91,12 @@ def convert(base_dir, testing_hold=5, depth_start=0):
 if __name__ == "__main__":
     base_dir = "../AnnaTrain"
     convert(base_dir=base_dir, testing_hold=8, depth_start=0)
-    # arr = np.load(join(base_dir, "llff_colmap/train_depths.npy"), allow_pickle=True)
-    # print(arr[0]["depth"])
-    # print(arr[0]["coord"])
+
+    # arr_depth = np.load(join(base_dir, "llff_colmap/train_depths.npz"), allow_pickle=True)
+    # arr_depth = arr_depth["arr_0"]
+    # print(type(arr_depth))
+    # print(type(arr_depth[0]))
+    # print(arr_depth[0]["depth"])
+    # print(arr_depth[0]["coord"])
+    # arr_pose = np.load(join(base_dir, "llff_colmap/train_poses.npy"), allow_pickle=True)
+    # print(arr_pose[0])
