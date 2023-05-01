@@ -1,4 +1,4 @@
-expname = 20230416_01_80view
+expname = 20230417_0133_80view_renderonly
 basedir = ./logs/80v_160_8_792
 datadir = ./data/80view_160_8_792
 dataset_type = llff
@@ -16,4 +16,6 @@ depth_lambda = 0.1
 i_testset = 5000
 i_video = 10000
 N_iters = 50000
-render_mypath = True
+
+render_train = True
+ft_path = logs/80v_160_8_792/20230416_01_80view/050000.tar
