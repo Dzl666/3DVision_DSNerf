@@ -242,6 +242,7 @@ class NeRF_RGB(nn.Module):
 
 # Ray helpers
 def get_rays(H, W, focal, c2w):
+    # torch mesh need to use index 'ij'
     i, j = torch.meshgrid(torch.linspace(0, W-1, W), torch.linspace(0, H-1, H), indexing='ij')
     i = i.t()
     j = j.t()
@@ -265,7 +266,7 @@ def get_rays_np(H, W, focal, c2w):
 
 def get_rays_by_coord_np(H, W, focal, c2w, coords):
     i, j = (coords[:,0]-W*0.5)/focal, -(coords[:,1]-H*0.5)/focal
-    dirs = np.stack([i,j,-np.ones_like(i)],-1)
+    dirs = np.stack([i, j, -np.ones_like(i)], -1)
     rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)
     rays_o = np.broadcast_to(c2w[:3,-1], np.shape(rays_d))
     return rays_o, rays_d

@@ -2,18 +2,16 @@ import os, sys
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import numpy as np
-import imageio
-from skimage import img_as_ubyte
-import json
 import random
 import time
 import torch
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm, trange
-from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
 import configargparse
+import imageio
+from skimage import img_as_ubyte
 
 from preprocess.load_llff import load_llff_data, load_colmap_depth, load_colmap_llff
 from preprocess.load_dtu import load_dtu_data
@@ -25,7 +23,10 @@ from utils.generate_renderpath import generate_renderpath, Slerp_path
 
 # concate_time, iter_time, split_time, loss_time, backward_time = [], [], [], [], []
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-np.random.seed(0)
+seed = 1
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
 DEBUG = False
 
 def batchify(fn, chunk):
@@ -148,7 +149,9 @@ def render_path(render_poses, hwf, chunk, render_kwargs, savedir=None, render_fa
 
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
-        rgb, disp, acc, depth, extras = render(H, W, focal, chunk=chunk, c2w=c2w[:3,:4], retraw=True, **render_kwargs)
+        rgb, disp, acc, depth, extras = render(
+            H, W, focal, chunk=chunk, c2w=c2w[:3,:4], retraw=True, **render_kwargs
+            )
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
 
@@ -157,16 +160,12 @@ def render_path(render_poses, hwf, chunk, render_kwargs, savedir=None, render_fa
             rgb8[np.isnan(rgb8)] = 0
             imageio.imwrite(os.path.join(savedir, '{:03d}.png'.format(i)), img_as_ubyte(rgb8))
             depth = depth.cpu().numpy()
-            imageio.imwrite(os.path.join(savedir, '{:03d}_depth.png'.format(i)), depth)
             print("max:", np.nanmax(depth))
+            depth_norm = (depth - np.min(depth)) / (np.max(depth) - np.min(depth))
+            imageio.imwrite(os.path.join(savedir, '{:03d}_depth.png'.format(i)), img_as_ubyte(depth_norm))
             # depth = depth / 5 * 255
             # depth_color = cv2.applyColorMap(depth.astype(np.uint8), cv2.COLORMAP_JET)[:,:,::-1]
             # depth_color[np.isnan(depth_color)] = 0
-            # np.savez(
-            #     os.path.join(savedir, '{:03d}.npz'.format(i)),
-            #     rgb=rgb.cpu().numpy(), disp=disp.cpu().numpy(),
-            #     acc=acc.cpu().numpy(), depth=depth
-            #     )
             
     print('Saved rendered test set')
     print("Rendering time: {:.4f}s for {} views.".format(time.time() - t, len(render_poses)))
@@ -441,18 +440,14 @@ def train(args):
         test_poses = test_poses[:, :3, :4]
         poses = np.concatenate([train_poses, test_poses], axis=0)
         images = np.concatenate([train_imgs, test_imgs], axis=0)
-        print(f'Loaded colmap llff.\n \
-              img shape:{images.shape}\n \
-              render pose:{render_poses.shape}\n \
-              (height, width, focal_len):{hwf}\n \
-              =====================')
+        print("=========== Loaded colmap llff ===========")
         i_train = list(range(train_poses.shape[0]))
         i_test = list(range(train_poses.shape[0], poses.shape[0]))
         i_val = i_test
 
         if args.no_ndc:
-            near = np.ndarray.min(bds) * .9
-            far = np.ndarray.max(bds) * 1.
+            near = np.min(bds) * .9
+            far = np.max(bds) * 1.
         else:
             near = 0.
             far = 1.
@@ -460,11 +455,10 @@ def train(args):
         if args.colmap_depth:
             depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75)
         images, poses, bds, render_poses, i_test = load_llff_data(
-            args.datadir, args.factor, recenter=True, bd_factor=.75, spherify=args.spherify)
+            args.datadir, args.factor, recenter=False, bd_factor=.75, spherify=args.spherify)
         hwf = poses[0,:3,-1]
         poses = poses[:,:3,:4]
-        print(f'Loaded llff.\nimg:{images.shape}\nrender pose:{render_poses.shape}\n\
-              (height, width, focal_len):{hwf}\n=====================')
+        print("=========== Loaded llff ===========")
         if not isinstance(i_test, list):
             i_test = [i_test]
 
@@ -489,46 +483,47 @@ def train(args):
         else:
             near = 0.
             far = 1.
-    elif args.dataset_type == 'dtu':
-        images, poses, hwf = load_dtu_data(args.datadir)
-        print(f'Loaded dtu.\nimg:{images.shape}\nrender pose:{render_poses.shape}\n\
-              (height, width, focal_len):{hwf}\n=====================')
-        if args.test_scene is not None:
-            i_test = np.array([i for i in args.test_scene])
+    # elif args.dataset_type == 'dtu':
+    #     images, poses, hwf = load_dtu_data(args.datadir)
+    #     print("=========== Loaded DTU dataset ===========")
+    #     if args.test_scene is not None:
+    #         i_test = np.array([i for i in args.test_scene])
 
-        if i_test[0] < 0:
-            i_test = []
-        i_val = i_test
-        if args.train_scene is None:
-            i_train = np.array([i for i in np.arange(int(images.shape[0])) if
-                        (i not in i_test and i not in i_val)])
-        else:
-            i_train = np.array([i for i in args.train_scene if
-                        (i not in i_test and i not in i_val)])
+    #     if i_test[0] < 0:
+    #         i_test = []
+    #     i_val = i_test
+    #     if args.train_scene is None:
+    #         i_train = np.array([i for i in np.arange(int(images.shape[0])) if
+    #                     (i not in i_test and i not in i_val)])
+    #     else:
+    #         i_train = np.array([i for i in args.train_scene if
+    #                     (i not in i_test and i not in i_val)])
         
-        near = 0.1
-        far = 5.0
-        if args.colmap_depth:
-            depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75)
-        
+    #     near = 0.1
+    #     far = 5.0
+    #     if args.colmap_depth:
+    #         depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75)
     else:
         print('Unknown dataset type', args.dataset_type, 'exiting')
         return
     
-    print(f'Boundarys: NEAR-{near} FAR-{far}')
+    print(f'Img shape:{images.shape}')
+    print(f'(height, width, focal): {hwf}')
+    print(f'Boundarys: NEAR: {near}, FAR: {far}')
     # Cast intrinsics to right types
     H, W, focal = hwf
     H, W = int(H), int(W)
     hwf = [H, W, focal]
 
     # set render path, if not apply, use origin render path
-    if args.render_test:
-        render_poses = np.array(poses[i_test])
-    elif args.render_train:
+    if args.render_train:
         # render_poses = np.array(poses[i_train])
-        render_poses = Slerp_path(np.array(poses[i_train]), 3)
+        render_poses = Slerp_path(np.array(poses[i_train]), args.render_itp_nodes)
     elif args.render_mypath:
         render_poses = generate_renderpath(np.array(poses[i_test])[5:9], focal, scale=3)
+    print(f'Render poses number:{len(render_poses)}')
+    # Move testing data to GPU
+    render_poses = torch.from_numpy(np.array(render_poses)).to(device)
 
     # Create log dir and copy the config file
     basedir = args.basedir
@@ -552,9 +547,6 @@ def train(args):
     render_kwargs_train.update(bds_dict)
     render_kwargs_test.update(bds_dict)
 
-    # Move testing data to GPU
-    render_poses = torch.from_numpy(np.array(render_poses)).to(device)
-
 
 
 
@@ -563,14 +555,7 @@ def train(args):
     if args.render_only:
         print('========== RENDER ONLY ==========')
         with torch.no_grad():
-            if args.render_test:
-                images = images[i_test] # render_test switches to test poses
-            else:
-                images = None   # Default is smoother render_poses path
-
-            if args.render_test:
-                testsavedir = os.path.join(basedir, expname, 'renderonly_{}_{:06d}'.format('test', start))
-            elif args.render_train:
+            if args.render_train:
                 testsavedir = os.path.join(basedir, expname, 'renderonly_{}_{:06d}'.format('train', start))
             else:
                 testsavedir = os.path.join(basedir, expname, 'renderonly_{}_{:06d}'.format('path', start))
@@ -581,7 +566,11 @@ def train(args):
                 index_pose = i_train[0]
                 rays_o, rays_d = get_rays_by_coord_np(H, W, focal, poses[index_pose,:3,:4], depth_gts[index_pose]['coord'])
                 rays_o, rays_d = torch.Tensor(rays_o).to(device), torch.Tensor(rays_d).to(device)
-                rgb, sigma, z_vals, depth_maps, weights = render_test_ray(rays_o, rays_d, hwf, network=render_kwargs_test['network_fine'], **render_kwargs_test)
+                rgb, sigma, z_vals, depth_maps, weights = render_test_ray(
+                    rays_o, rays_d, hwf,
+                    network=render_kwargs_test['network_fine'],
+                    **render_kwargs_test
+                )
                 # sigma = sigma.reshape(H, W, -1).cpu().numpy()
                 # z_vals = z_vals.reshape(H, W, -1).cpu().numpy()
                 # np.savez(os.path.join(testsavedir, 'rays.npz'), rgb=rgb.cpu().numpy(), sigma=sigma.cpu().numpy(), z_vals=z_vals.cpu().numpy())
@@ -593,24 +582,19 @@ def train(args):
                 print(depth_gts[index_pose]['coord'])
             else:
                 poses_length = render_poses.shape[0]
-                # video_pieces = 2
-                # cut_start = poses_length*piece // video_pieces
-                # cut_end = poses_length*(piece+1) // video_pieces
-                rgbs, disps = render_path(
-                    render_poses[:poses_length//2], hwf, args.chunk, render_kwargs_test, 
-                    savedir=os.path.join(testsavedir, "1"), render_factor=args.render_factor
-                    )
-                imageio.mimwrite(os.path.join(testsavedir, 'rgb1.mp4'), to8b(rgbs), fps=30, quality=8)
-                disps[np.isnan(disps)] = 0
-                # print('Depth stats', np.mean(disps), np.max(disps), np.percentile(disps, 95))
-                imageio.mimwrite(os.path.join(testsavedir, 'disp1.mp4'), to8b(disps / np.percentile(disps, 95)), fps=30, quality=8)
-                rgbs, disps = render_path(
-                    render_poses[poses_length//2:], hwf, args.chunk, render_kwargs_test, 
-                    savedir=os.path.join(testsavedir, "2"), render_factor=args.render_factor
-                    )
-                imageio.mimwrite(os.path.join(testsavedir, 'rgb2.mp4'), to8b(rgbs), fps=30, quality=8)
-                disps[np.isnan(disps)] = 0
-                imageio.mimwrite(os.path.join(testsavedir, 'disp2.mp4'), to8b(disps / np.percentile(disps, 95)), fps=30, quality=8)
+                video_pieces = args.seg_video
+                for piece in range(video_pieces):
+                    cut_start = poses_length*piece // video_pieces
+                    cut_end = poses_length*(piece+1) // video_pieces
+                    rgbs, disps = render_path(
+                        render_poses[cut_start : cut_end], hwf, args.chunk, render_kwargs_test, 
+                        savedir=os.path.join(testsavedir, str(piece)), render_factor=args.render_factor
+                        )
+                    rgbs, disps = render_path(render_poses[cut_start : cut_end], hwf, args.chunk, render_kwargs_test)
+                    imageio.mimwrite(os.path.join(testsavedir, f"rgb{piece}.mp4"), to8b(rgbs), fps=30, quality=8)
+                    disps[np.isnan(disps)] = 0
+                    imageio.mimwrite(os.path.join(testsavedir, f"disp{piece}.mp4"), to8b(disps / np.percentile(disps, 95)), fps=30, quality=8)
+                    # print('Depth stats', np.mean(disps), np.max(disps), np.percentile(disps, 95))    
             return
 
 
@@ -622,17 +606,17 @@ def train(args):
     else:
         N_depth = int(args.N_rand * args.depth_rays_prop)
         N_rgb = args.N_rand - N_depth
+        
     use_batching = not args.no_batching
     if use_batching:
+        print("========== Using batch! ==========")
         # For random ray batching
         print('get rays')
         rays = np.stack([get_rays_np(H, W, focal, p) for p in poses[:,:3,:4]], 0) # [N, ro+rd, H, W, 3]
-        if args.debug:
-            print('rays.shape:', rays.shape)
-        print('done, concats')
+        print('rays.shape:', rays.shape)
         rays_rgb = np.concatenate([rays, images[:,None]], 1) # [N, ro+rd+rgb, H, W, 3]
-        if args.debug:
-            print('rays_rgb.shape:', rays_rgb.shape)
+        print('rays_rgb.shape:', rays_rgb.shape)
+        
         rays_rgb = np.transpose(rays_rgb, [0,2,3,1,4]) # [N, H, W, ro+rd+rgb, 3]
         rays_rgb = np.stack([rays_rgb[i] for i in i_train], 0) # train images only
         rays_rgb = np.reshape(rays_rgb, [-1,3,3]) # [(N-1)*H*W, ro+rd+rgb, 3]
@@ -642,7 +626,7 @@ def train(args):
 
         rays_depth = None
         if args.colmap_depth:
-            print('get depth rays')
+            print('Getting depth rays...')
             rays_depth_list = []
             for i in i_train:
                 rays_depth = np.stack(get_rays_by_coord_np(H, W, focal, poses[i,:3,:4], depth_gts[i]['coord']), axis=0) # 2 x N x 3
@@ -664,8 +648,7 @@ def train(args):
             np.random.shuffle(rays_depth)
 
             max_depth = np.max(rays_depth[:,3,0])
-        print('done')
-        i_batch = 0
+        print('======== Get depth rays done ========')
 
     if args.debug:
         return
@@ -687,7 +670,8 @@ def train(args):
 
     # ======================== Begin Training ========================
     N_iters = args.N_iters + 1
-    print(f"Begin - TRAIN views: {i_train}, TEST views: {i_test}, VAL views: {i_val}")
+    print(f"Begin - TRAIN views: {i_train}")
+    print(f"TEST views: {i_test}")
 
     writer = SummaryWriter(os.path.join(basedir, expname, 'summary'))
     start = start + 1
@@ -695,12 +679,13 @@ def train(args):
         time0 = time.time()
         # Sample random ray batch
         if use_batching:
-            # Random over all images
-            # batch = rays_rgb[i_batch:i_batch+N_rand] # [B, 2+1, 3*?]
+            # Random over all images - batch = rays_rgb[i_batch:i_batch+N_rand] # [B, 2+1, 3*?]
             try:
                 batch = next(raysRGB_iter).to(device)
             except StopIteration:
-                raysRGB_iter = iter(DataLoader(RayDataset(rays_rgb), batch_size = N_rgb, shuffle=True, num_workers=0))
+                raysRGB_iter = iter(DataLoader(
+                    RayDataset(rays_rgb), batch_size = N_rgb, shuffle=True, num_workers=0
+                    ))
                 batch = next(raysRGB_iter).to(device)
             batch = torch.transpose(batch, 0, 1)
             batch_rays, target_s = batch[:2], batch[2]
@@ -761,9 +746,10 @@ def train(args):
                 batch_rays = torch.stack([rays_o, rays_d], 0) # (2, N_rand, 3)
                 target_s = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
 
+
+
         ########  Core optimization loop  ########
         # timer_0 = time.perf_counter()
-
         if args.colmap_depth:
             N_batch = batch_rays.shape[1]
             batch_rays = torch.cat([batch_rays, batch_rays_depth], 1) # (2, 2 * N_rand, 3)
@@ -859,10 +845,8 @@ def train(args):
             }, path)
             print('Saved checkpoints at', path)
 
-        if i%args.i_print==0:
+        if i % args.i_print==0:
             tqdm.write(f"[Train] Iter: {i}, Loss: {loss.item()}, PSNR: {psnr.item()}")
-            print("GPU memory used (optimizer.step): ")
-            print(torch.cuda.memory_allocated(device) / 1024**2, "MB")
         """
             with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_print):
                 tf.contrib.summary.histogram('tran', trans)
@@ -895,19 +879,19 @@ def train(args):
                 writer.add_scalar("Testing Loss", test_loss.item(), i)
                 writer.add_scalar("Testing PSNR", test_psnr.item(), i)
                 tqdm.write(f"[Test] Iter: {i}, Loss: {test_loss.item()}, PSNR: {test_psnr.item()}")
+                print("GPU memory used: {:3f} GB".format(torch.cuda.memory_allocated(device) / 1024**3))
+                print("Max GPU memory used: {:3f} GB".format(torch.cuda.max_memory_allocated(device) / 1024**3))
 
         if args.i_video > 0 and i%args.i_video==0 and i > 0:
             # Turn on testing mode
             with torch.no_grad():
                 moviebase = os.path.join(basedir, expname, '{}_{:06d}_'.format(expname, i))
                 poses_length = render_poses.shape[0]
-                video_pieces = 2
+                video_pieces = args.seg_video
                 for piece in range(video_pieces):
                     cut_start = poses_length*piece // video_pieces
                     cut_end = poses_length*(piece+1) // video_pieces
                     rgbs, disps = render_path(render_poses[cut_start : cut_end], hwf, args.chunk, render_kwargs_test)
-                    print("GPU usage (image rendering):")
-                    print(torch.cuda.memory_allocated() / 1024**2, "MB")
                     imageio.mimwrite(moviebase + 'rgb%d.mp4'%piece, to8b(rgbs), fps=30, quality=8)
                     imageio.mimwrite(moviebase + 'disp%d.mp4'%piece, to8b(disps / np.nanmax(disps)), fps=30, quality=8)
 
@@ -927,7 +911,7 @@ def train(args):
 
 def config_parser():
     parser = configargparse.ArgumentParser()
-    parser.add_argument('--config', is_config_file=True, help='config file path')
+    parser.add_argument("--config", is_config_file=True, help='config file path')
     parser.add_argument("--expname", type=str, help='experiment name')
     parser.add_argument("--basedir", type=str, default='./logs/', help='where to store ckpts and logs')
     parser.add_argument("--datadir", type=str, default='./data/8v_400_5_435', help='input data directory')
@@ -959,14 +943,10 @@ def config_parser():
                         help='specific weights npy file to reload for coarse network')
 
     # rendering options
-    parser.add_argument("--N_samples", type=int, default=64, 
-                        help='number of coarse samples per ray')
-    parser.add_argument("--N_importance", type=int, default=0,
-                        help='number of additional fine samples per ray')
-    parser.add_argument("--perturb", type=float, default=1.,
-                        help='set to 0. for no jitter, 1. for jitter')
-    parser.add_argument("--use_viewdirs", action='store_true', 
-                        help='use full 5D input instead of 3D')
+    parser.add_argument("--N_samples", type=int, default=64, help='number of coarse samples per ray')
+    parser.add_argument("--N_importance", type=int, default=0, help='number of additional fine samples per ray')
+    parser.add_argument("--perturb", type=float, default=1., help='set to 0. for no jitter, 1. for jitter')
+    parser.add_argument("--use_viewdirs", action='store_true', help='use full 5D input instead of 3D')
     parser.add_argument("--i_embed", type=int, default=0, 
                         help='set 0 for default positional encoding, -1 for none')
     parser.add_argument("--multires", type=int, default=10, 
@@ -983,6 +963,8 @@ def config_parser():
     parser.add_argument("--render_mypath", action='store_true', help='render the self-generated path')         
     parser.add_argument("--render_factor", type=int, default=0, 
                         help='downsampling factor to speed up rendering (4/8)')
+    parser.add_argument("--render_itp_nodes", type=int, default=1, 
+                        help='inserted nodes between two poses when interpolate')
 
     # training options
     parser.add_argument("--precrop_iters", type=int, default=0,
@@ -1016,6 +998,7 @@ def config_parser():
     parser.add_argument("--i_weights", type=int, default=10000, help='frequency of weight ckpt saving')
     parser.add_argument("--i_testset", type=int, default=10000, help='frequency of testset saving')
     parser.add_argument("--i_video",   type=int, default=50000, help='frequency of render_poses video saving')
+    parser.add_argument("--seg_video", type=int, default=2, help="segmentation of generated video")
     # debug
     parser.add_argument("--debug",  action='store_true')
 

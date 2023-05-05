@@ -86,6 +86,5 @@ def Slerp_path(poses, interpolate_node=1):
             render_poses.append(inter_pose)
         # add the end pose
         render_poses.append(poses[v_idx+1])
-    print(f"Rendering poses number: {len(render_poses)}")
     return render_poses
 

@@ -102,6 +102,7 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
         print( 'Mismatch between imgs {} and poses {} !!!!'.format(len(imgfiles), poses.shape[-1]) )
         return
     
+    # check h,w and change f if apply
     sh = imageio.imread(imgfiles[0]).shape
     poses[:2, 4, :] = np.array(sh[:2]).reshape([2, 1])
     poses[2, 4, :] = poses[2, 4, :] * 1./factor
@@ -142,17 +143,13 @@ def ptstocam(pts, c2w):
     return tt
 
 def poses_avg(poses):
-
     hwf = poses[0, :3, -1:]
-
     center = poses[:, :3, 3].mean(0)
     vec2 = normalize(poses[:, :3, 2].sum(0))
     up = poses[:, :3, 1].sum(0)
     c2w = np.concatenate([viewmatrix(vec2, up, center), hwf], 1)
     
     return c2w
-
-
 
 def render_path_spiral(c2w, up, rads, focal, zdelta, zrate, rots, N):
     render_poses = []
@@ -243,7 +240,7 @@ def spherify_poses(poses, bds):
     
 
 def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=False, path_zflat=False):
-    poses, bds, imgs = _load_data(basedir, factor=factor) # factor=8 downsamples original imgs by 8x
+    poses, bds, imgs = _load_data(basedir, factor=factor) # downsamples original imgs
     print('Loaded', basedir, bds.min(), bds.max())
     # print('poses_bound.npy:\n', poses[:,:,0])
 
@@ -266,21 +263,17 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
         
     if spherify:
         poses, render_poses, bds = spherify_poses(poses, bds)
-
     else:
         c2w = poses_avg(poses)
-        print('recentered', c2w.shape)
-        print(c2w[:3,:4])
+        print('recentered: ', c2w[:3,:4])
 
-        ## Get spiral
         # Get average pose
         up = normalize(poses[:, :3, 1].sum(0))
-
         # Find a reasonable "focus depth" for this dataset
         close_depth, inf_depth = bds.min()*.9, bds.max()*5.
         dt = .75
-        mean_dz = 1./(((1.-dt)/close_depth + dt/inf_depth))
-        focal = mean_dz
+        # mean_dz
+        focal = 1./(((1.-dt)/close_depth + dt/inf_depth))
 
         # Get radii for spiral path
         shrink_factor = .8
@@ -291,21 +284,19 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
         N_views = 120
         N_rots = 2
         if path_zflat:
-#             zloc = np.percentile(tt, 10, 0)[2]
-            zloc = -close_depth * .1
+            zloc = -close_depth * .1    #zloc = np.percentile(tt, 10, 0)[2]
             c2w_path[:3,3] = c2w_path[:3,3] + zloc * c2w_path[:3,2]
             rads[2] = 0.
             N_rots = 1
             N_views/=2
         # Generate poses for spiral path
-        render_poses = render_path_spiral(c2w_path, up, rads, focal, zdelta, zrate=.5, rots=N_rots, N=N_views)
-         
-    render_poses = np.array(render_poses).astype(np.float32)
+        render_poses = render_path_spiral(
+            c2w_path, up, rads, focal, zdelta,
+            zrate=.5, rots=N_rots, N=N_views
+        )
+    render_poses = np.array(render_poses, dtype=np.float32)
 
     c2w = poses_avg(poses)
-    print('Data:')
-    print(poses.shape, images.shape, bds.shape)
-    
     dists = np.sum(np.square(c2w[:3,3] - poses[:,:3,3]), -1)
     i_test = np.argmin(dists)
     print('HOLDOUT view is', i_test)
@@ -328,8 +319,6 @@ def get_poses(images):
     return np.array(poses)
 
 def load_colmap_depth(basedir, factor=8, bd_factor=.75):
-    data_file = Path(basedir) / 'colmap_depth.npy'
-    
     images = read_images_binary(Path(basedir) / 'sparse' / '0' / 'images.bin')
     points = read_points3d_binary(Path(basedir) / 'sparse' / '0' / 'points3D.bin')
 
@@ -372,13 +361,13 @@ def load_colmap_depth(basedir, factor=8, bd_factor=.75):
             data_list.append({"depth":np.array(depth_list), "coord":np.array(coord_list), "error":np.array(weight_list)})
         else:
             print(id_im, len(depth_list))
+
+    data_file = Path(basedir) / 'colmap_depth.npy'
     # json.dump(data_list, open(data_file, "w"))
     np.save(data_file, data_list)
     return data_list
 
 def load_sensor_depth(basedir, factor=8, bd_factor=.75):
-    data_file = Path(basedir) / 'colmap_depth.npy'
-    
     images = read_images_binary(Path(basedir) / 'sparse' / '0' / 'images.bin')
     points = read_points3d_binary(Path(basedir) / 'sparse' / '0' / 'points3D.bin')
 
@@ -425,23 +414,67 @@ def load_sensor_depth(basedir, factor=8, bd_factor=.75):
             data_list.append({"depth":np.array(depth_list), "coord":np.array(coord_list), "weight":np.array(weight_list)})
         else:
             print(id_im, len(depth_list))
+            
+    data_file = Path(basedir) / 'colmap_depth.npy'
     # json.dump(data_list, open(data_file, "w"))
     np.save(data_file, data_list)
     return data_list
 
 def load_colmap_llff(basedir):
+    print("loading colmap_llff...")
     basedir = Path(basedir)
 
-    train_imgs = np.load(basedir / 'train_images.npy')
-    test_imgs = np.load(basedir / 'test_images.npy')
+    # shape of each pose [N, 3, 5]
     train_poses = np.load(basedir / 'train_poses.npy')
     test_poses = np.load(basedir / 'test_poses.npy')
-    video_poses = np.load(basedir / 'video_poses.npy')
-    depth_npz = np.load(basedir / 'train_depths.npz', allow_pickle=True)
-    depth_data = depth_npz[depth_npz.files[0]]
-    bds = np.load(basedir / 'bds.npy')
+    print("Loaded train and test poses.")
+    # print(f"train_poses shape: {str(train_poses.shape)}")
 
-    return train_imgs, test_imgs, train_poses, test_poses, video_poses, depth_data, bds
+    # Correct rotation matrix ordering and move variable dim to axis 0
+    train_poses = np.concatenate([
+        -train_poses[:,:,1:2], -train_poses[:,:,0:1],
+        -train_poses[:,:,2:4], train_poses[:,:,4:]], 2)
+    train_poses[:,[0, 1], 3] = train_poses[:,[1, 0], 3]
+    test_poses = np.concatenate([
+        -test_poses[:,:,1:2], -test_poses[:,:,0:1],
+        -test_poses[:,:,2:4], test_poses[:,:,4:]], 2)
+    test_poses[:,[0, 1], 3] = test_poses[:,[1, 0], 3]
+    # shape of boundary [N, 2]
+    bds = np.load(basedir / 'bds.npy')
+    print("Loaded boundarys.")
+    
+    # Rescale
+    bd_factor=.75
+    sc = 1. if bd_factor is None else 1./(bds.min() * bd_factor)
+    train_poses[:,:3,3] *= sc
+    test_poses[:,:3,3] *= sc   
+    bds *= sc
+
+    train_num = train_poses.shape[0]
+    poses = recenter_poses(np.concatenate([train_poses, test_poses], 0))
+    train_poses = poses[:train_num, :, :]
+    test_poses = poses[train_num:, :, :]
+    
+    # shape of each imgs [N, 720, 1280, 3]
+    train_imgs_z = np.load(basedir / 'train_images.npz', allow_pickle=True)
+    train_imgs = train_imgs_z[train_imgs_z.files[0]]
+    # train_imgs = np.load(basedir / 'train_images.npy')
+    test_imgs_z = np.load(basedir / 'test_images.npz', allow_pickle=True)
+    test_imgs = test_imgs_z[test_imgs_z.files[0]]
+    print("Loaded train and test images.")
+    # print(f"train_imgs shape: {str(train_imgs.shape)}")
+    # print(f"test_imgs shape: {str(test_imgs.shape)}")
+    
+    # shape of depth, coord, error: [720*1280], [720*1280, 2]
+    depth_z = np.load(basedir / 'train_depths.npz', allow_pickle=True)
+    depth_data = depth_z[depth_z.files[0]]
+    print("Loaded train depths.")
+    # s = str(np.max(depth_data[0]["coord"][:,0]))
+    # print(f"coordinates column max {s}")
+    # s = str(np.max(depth_data[0]["coord"][:,1]))
+    # print(f"coordinates row max {s}")
+
+    return train_imgs, test_imgs, train_poses, test_poses, test_poses, depth_data, bds
 
     
 

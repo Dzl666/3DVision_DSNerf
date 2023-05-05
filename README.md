@@ -5,18 +5,18 @@
 
 * Activate virtual environment: `source ../env-3dvision/bin/activate`
 
-* Submit Job: `sbatch --time=4:00:00 --gpus=1 --gres=gpumem:16g --cpus-per-task=1 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="[...cmd...]"`
+* Debug `srun --time=1:00:00 --gpus=1 --gres=gpumem:30g -n 4 --mem-per-cpu=8g --pty bash`
+* Check the status of allocation: `squeue`
 
+* Submit Job: `sbatch --time=4:00:00 --gpus=1 --gres=gpumem:16g -n 2 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="[...cmd...]"`
 * Check details of the job: `myjobs -j job_id`
-
 * Check details of the job: `scancel job_id`
 
 * Change access: `chmod -R u+rwx,g+rwx,o+rx ./`
 
-> Training `sbatch --time=8:00:00 --gpus=1 --gres=gpumem:30g --cpus-per-task=1 --mem-per-cpu=20g --output=./logs/raw_output --open-mode=append --wrap="python run_nerf.py --config configs/150vAnna_20_2.txt > ./logs/training_log"`
+> Training `sbatch --time=8:00:00 --gpus=1 --gres=gpumem:30g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_1718 --open-mode=append --wrap="python run_nerf.py --config configs/100vAnna_20_3.txt > ./logs/training_log_1718"`
 
-> Only Render `sbatch --time=1:00:00 --gpus=1 --gres=gpumem:16g --cpus-per-task=1 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="python run_nerf.py --config configs/150v_90_15_2325.txt --render_only > ./logs/rendering_log"`
-
+> Only Render `sbatch --time=1:00:00 --gpus=1 --gres=gpumem:16g -n 3 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="python run_nerf.py --config configs/150v_90_15_2325.txt --render_only > ./logs/rendering_log"`
 
 
 ## Current Work
