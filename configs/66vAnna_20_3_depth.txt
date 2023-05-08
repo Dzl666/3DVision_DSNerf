@@ -1,7 +1,7 @@
-expname = 20230507_0220_revival
-basedir = ./logs/80v_160_8_792
-datadir = ./data/80view_160_8_792
-dataset_type = llff
+expname = 20230507_0110
+basedir = ./logs/66vAnna_20_3_depth/
+datadir = ./data/66viewAnna_20_3_depth
+dataset_type = llff_depth
 factor = 2
 llffhold = 6
 N_rand = 1024
@@ -10,13 +10,15 @@ N_importance = 64
 use_viewdirs = True
 raw_noise_std = 1e0
 no_ndc = True
+
 colmap_depth = True
 depth_loss = True
 depth_lambda = 0.1
-i_testset = 5000
-i_video = 10000
-N_iters = 50000
 
-seg_video = 3
+N_iters = 30000
+i_testset = 5000
+
+i_video = 10000
+seg_video = 6
 render_train = True
 render_itp_nodes = 2

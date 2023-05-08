@@ -1,8 +1,9 @@
-expname = 20230506_0158_no_depth
-basedir = ./logs/100vAnna_20_3/
-datadir = ./data/100viewAnna_20_3
-dataset_type = colmap_llff
-
+expname = 20230507_2135
+basedir = ./logs/66vAnna_20_3_depth/
+datadir = ./data/66viewAnna_20_3_depth
+dataset_type = llff_depth
+factor = 2
+llffhold = 6
 N_rand = 1024
 N_samples = 32
 N_importance = 64
@@ -14,7 +15,7 @@ colmap_depth = False
 depth_loss = False
 depth_lambda = 0.1
 
-N_iters = 40000
+N_iters = 30000
 i_testset = 5000
 
 i_video = 10000

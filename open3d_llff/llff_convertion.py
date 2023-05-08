@@ -5,6 +5,7 @@ from os import makedirs
 import cv2
 
 uint2float = lambda x : (x.astype(np.float32) / 255.)
+axis_transform = np.linalg.inv(np.array([[0, 0, 1, 0], [-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, 0, 1]]))
 
 def convert(base_dir, testing_hold=8, depth_start=0):
     """testing_hold: one test image for every "testing_hold" images
@@ -16,7 +17,8 @@ def convert(base_dir, testing_hold=8, depth_start=0):
     train_poses = []
     test_poses = []
     train_depths = []
-    bounds = [1.0, 10.0]
+    max_bds = 0
+    min_bds = np.inf
 
     intrinsics_path = join(base_dir, "Video/Intrinsics.txt")    # intrinsics of the video
     extrinsics_path = join(base_dir, "Video/Pose.txt")          # poses of the video
@@ -41,7 +43,7 @@ def convert(base_dir, testing_hold=8, depth_start=0):
     W = cv2.imread(rgb_paths[0]).shape[1]
 
     # get all video extrinsics
-    extrinsics = np.loadtxt(extrinsics_path)[:, 1:13]
+    extrinsics = np.loadtxt(extrinsics_path)[:, 1:].reshape(-1, 4, 4)
 
     for ind in range(len(depths_paths)):
         # load depth and RGB-[720, 1080, 3]
@@ -49,12 +51,26 @@ def convert(base_dir, testing_hold=8, depth_start=0):
         print(f"loaded rgb: {str(rgb_paths[ind])}")
         # original unit: mm ?
         depth = 1e-3 * np.load(depths_paths[ind])
+        nonzero_idx = np.nonzero(depth)
+        depth_max = np.max(depth)
+        depth_min = np.min(depth[nonzero_idx])
+        if(depth_max > max_bds):
+            max_bds = depth_max
+        if(depth_min < min_bds):
+            min_bds = depth_min
         print(f"loaded depth: {str(depths_paths[ind])}")
 
         # get current row of intrinsics and concat with HWF
         rgb_row = int(rgb_paths[ind].split("\\")[-1][:-4])
-        cur_extrinsics = np.resize(np.array(extrinsics[rgb_row]), (3, 4))
-        cur_pose = np.hstack([cur_extrinsics, np.array([[H, W, focal]]).T]).astype(np.float32)
+        print(f"Row: {rgb_row}")
+        cur_extrinsics = extrinsics[rgb_row]
+        # R_W2C = cur_extrinsics[:, :3]
+        # t_W2C = cur_extrinsics[:, 3]
+
+        # convert_W2C_to_C2W
+        converted_pose = np.dot(axis_transform, np.linalg.inv(cur_extrinsics))
+        # print(converted_pose)
+        cur_pose = np.hstack([converted_pose[:3], np.array([[H, W, focal]]).T]).astype(np.float32)
 
         if ind % testing_hold == 0:
             test_images.append(rgb)
@@ -65,7 +81,7 @@ def convert(base_dir, testing_hold=8, depth_start=0):
             depth_info = {"depth": [], "coord": [], "error": []}
             for x in range(depth.shape[1]):
                 for y in range(depth.shape[0]):
-                    if depth[y, x] != 0:
+                    if depth[y, x] > 0:
                         depth_info["depth"].append(depth[y, x])
                         depth_info["coord"].append(np.array([x, y], dtype=np.float64))
                         depth_info["error"].append(1.0 + 2e-2)
@@ -84,6 +100,9 @@ def convert(base_dir, testing_hold=8, depth_start=0):
     print("saving depths.....")
     # np.save(join(save_dir, "train_depths.npy"), np.array(train_depths))
     np.savez_compressed(join(save_dir, "train_depths.npz"), np.array(train_depths))
+
+    bounds = [min_bds, max_bds]
+    print(f"Boundarys - Min:{min_bds}, Max: {max_bds}")
     print("saving bounds.....")
     np.save(join(save_dir, "bds.npy"), np.array(bounds))
     print("finished!")
@@ -91,24 +110,24 @@ def convert(base_dir, testing_hold=8, depth_start=0):
 
 if __name__ == "__main__":
     # base_dir = "../DSNeRF_data"
-    base_dir = "../AnnaTrain/100_20_3"
+    base_dir = "../AnnaTrain"
     # convert(base_dir=base_dir, testing_hold=8, depth_start=0)
 
-    arr_depth = np.load(join(base_dir, "llff_colmap/train_depths.npz"), allow_pickle=True)
-    arr_depth = arr_depth[arr_depth.files[0]]
-    print(type(arr_depth[0]))
-    print(type(arr_depth[0]["depth"][0]))
-    print(arr_depth[0]["depth"])
-    print(type(arr_depth[0]["coord"][0, 0]))
-    print(arr_depth[0]["coord"])
-    print(type(arr_depth[0]["error"][0]))
-    print(arr_depth[0]["error"])
+    # arr_depth = np.load(join(base_dir, "llff_colmap/train_depths.npz"), allow_pickle=True)
+    # arr_depth = arr_depth[arr_depth.files[0]]
+    # print(type(arr_depth[0]))
+    # print(type(arr_depth[0]["depth"][0]))
+    # print(arr_depth[0]["depth"])
+    # print(type(arr_depth[0]["coord"][0, 0]))
+    # print(arr_depth[0]["coord"])
+    # print(type(arr_depth[0]["error"][0]))
+    # print(arr_depth[0]["error"])
 
     # orchids_10view
     # arr_img = np.load(join(base_dir, "llff_colmap/train_images.npz"), allow_pickle=True)
     # arr_img = arr_img[arr_img.files[0]]
     # print(type(arr_img[0][0, 0, 0]))
     # print(arr_img[0].shape)
-    # arr_pose = np.load(join(base_dir, "llff_colmap/train_poses.npy"), allow_pickle=True)
+    # arr_pose = np.load(join(base_dir, "llff_colmap/test_poses.npy"), allow_pickle=True)
     # print(type(arr_pose[0, 0, 0]))
     # print(arr_pose[0])

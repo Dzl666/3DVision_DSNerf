@@ -30,7 +30,6 @@ def load_depth_and_cam(dir_depth, poses, timings, timestamp, K_parameters_depth)
     print(f"loading depth image {filename_depth}")
     depth = load_depth(filename_depth)
     
-
     M_depth = poses[frame_number_depth, 1:].reshape(4, 4).copy()
     K_depth = K_parameters_depth[:9].reshape(3, 3) # intrinsics
     # M_depth[:3, 3] *= 1000 
@@ -111,27 +110,26 @@ def generate_depth_maps(dir_seq, dir_depth, dir_rgb, dir_save, total_depth_frame
     timing_depth = np.loadtxt(join(dir_depth, 'Timing.txt'))
     K_parameters_depth = np.loadtxt(join(dir_depth, 'Intrinsics.txt'))
     dist_coeffs = np.array(K_parameters_depth[9:14]).astype('float32')
-    w_depth, h_depth = [int(x) for x in K_parameters_depth[-2:]]
+    # w_depth, h_depth = [int(x) for x in K_parameters_depth[-2:]]
 
     # RGB
     poses_rgb = np.loadtxt(join(dir_rgb, 'Pose.txt'))
     timing_rgb = np.loadtxt(join(dir_rgb, 'Timing.txt'))
     K_parameters_rgb = np.loadtxt(join(dir_rgb, 'Intrinsics.txt'))
-    w_color, h_color = [int(x) for x in K_parameters_rgb[-2:]]
+    # w_color, h_color = [int(x) for x in K_parameters_rgb[-2:]]
 
     ###### prepare for color map optimization ######
     # we use a continuous frames of videos as input for Color Map Optimization
     # initization of containers
     debug_mode = False
     start_frame = start_frame            # the first frame of video
-    # total_depth_frames = 100    # total number of frames to be processed
     rgbd_images = []           # container for rgbd images
     camera_parameters = []     # container for camera intrinsic and extrinsic parameters
     whole_pcd = None           # Collection of while point clouds
     filenames_rgb = []         # rgb file paths
     for frame_number_depth in range(start_frame, start_frame+total_depth_frames*depth_interval, depth_interval):
         time_stamp = timing_depth[frame_number_depth, 1]
-        # find the nearest depth frame
+        # find the nearest depth frame w.r.t timestamp
         depth, cam_depth_calib = load_depth_and_cam(
             dir_depth, poses_depth, timing_depth, time_stamp, K_parameters_depth
             )
@@ -166,14 +164,13 @@ def generate_depth_maps(dir_seq, dir_depth, dir_rgb, dir_save, total_depth_frame
     np.save(join(dir_save, 'rgb_paths.npy'), filenames_rgb)
 
 
-
 if __name__ == "__main__":
     dir_seq = "../AnnaTrain" # keep the original file structure of this file 
     generate_depth_maps(dir_seq=dir_seq,
                         dir_depth=join(dir_seq, 'Depth'), # depth map dir
                         dir_rgb=join(dir_seq, 'Video'), # video pics dir 
                         dir_save=join(dir_seq, 'depth_colmap_opt'), # where to save the outputs
-                        total_depth_frames = 150, # the total number of depth maps to process 
+                        total_depth_frames = 100, # the total number of depth maps to process 
                         start_frame = 20, # the index of the first depth map 
-                        depth_interval = 2)  # interval between each chosen depth map 
+                        depth_interval = 3)  # interval between each chosen depth map 
     

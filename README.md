@@ -14,10 +14,11 @@
 
 * Change access: `chmod -R u+rwx,g+rwx,o+rx ./`
 
-> Training `sbatch --time=8:00:00 --gpus=1 --gres=gpumem:30g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_1718 --open-mode=append --wrap="python run_nerf.py --config configs/100vAnna_20_3.txt > ./logs/training_log_1718"`
+> Training `sbatch --time=6:00:00 --gpus=1 --gres=gpumem:30g -n 1 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="python run_nerf.py --config configs/66vAnna_20_3_depth.txt > ./logs/training_log"`
 
 > Only Render `sbatch --time=1:00:00 --gpus=1 --gres=gpumem:16g -n 3 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="python run_nerf.py --config configs/150v_90_15_2325.txt --render_only > ./logs/rendering_log"`
 
+> Temp `sbatch --time=6:00:00 --gpus=1 --gres=gpumem:30g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_p --open-mode=append --wrap="python run_nerf.py --config configs/66vAnna_20_3_fix_poses.txt > ./logs/training_log_p"`
 
 ## Current Work
 
