@@ -18,7 +18,7 @@
 
 > Only Render `sbatch --time=1:00:00 --gpus=1 --gres=gpumem:16g -n 3 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="python run_nerf.py --config configs/150v_90_15_2325.txt --render_only > ./logs/rendering_log"`
 
-> Temp `sbatch --time=6:00:00 --gpus=1 --gres=gpumem:30g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_p --open-mode=append --wrap="python run_nerf.py --config configs/66vAnna_20_3_fix_poses.txt > ./logs/training_log_p"`
+> Temp `sbatch --time=7:30:00 --gpus=1 --gres=gpumem:25g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_experiment --open-mode=append --wrap="python run_nerf.py --config configs/ex_bookshelf.txt > ./logs/training_log_experiment"`
 
 ## Current Work
 

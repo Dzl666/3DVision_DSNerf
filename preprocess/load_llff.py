@@ -74,7 +74,7 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
     sh = imageio.imread(img0).shape
     
     sfx = ''
-    
+
     if factor is not None:
         sfx = '_{}'.format(factor)
         _minify(basedir, factors=[factor])
@@ -91,10 +91,10 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
         sfx = '_{}x{}'.format(width, height)
     else:
         factor = 1
-    
+
     imgdir = os.path.join(basedir, 'images' + sfx)
     if not os.path.exists(imgdir):
-        print( imgdir, 'does not exist, returning' )
+        print(imgdir, 'does not exist, returning')
         return
     
     imgfiles = [os.path.join(imgdir, f) for f in sorted(os.listdir(imgdir)) if f.endswith('JPG') or f.endswith('jpg') or f.endswith('png')]
@@ -109,19 +109,18 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
     
     if not load_imgs:
         return poses, bds
-    
+
     def imread(f):
         if f.endswith('png'):
             return imageio.imread(f, ignoregamma=True)
         else:
             return imageio.imread(f)
-        
-    imgs = imgs = [imread(f)[...,:3]/255. for f in imgfiles]
-    imgs = np.stack(imgs, -1)  
-    
-    print('Loaded image data', imgs.shape, poses[:,-1,0])
-    return poses, bds, imgs
 
+    imgs = [imread(f)[..., :3] / 255. for f in imgfiles]
+    imgs = np.stack(imgs, -1)
+
+    print('Loaded image data', imgs.shape, poses[:, -1, 0])
+    return poses, bds, imgs
     
             
             
@@ -243,7 +242,6 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     poses, bds, imgs = _load_data(basedir, factor=factor) # downsamples original imgs
     print('Loaded', basedir, bds.min(), bds.max())
     # print('poses_bound.npy:\n', poses[:,:,0])
-
     # Correct rotation matrix ordering and move variable dim to axis 0
     poses = np.concatenate([poses[:, 1:2, :], -poses[:, 0:1, :], poses[:, 2:, :]], 1) # [-u, r, -t] -> [r, u, -t]
     poses = np.moveaxis(poses, -1, 0).astype(np.float32)
@@ -330,8 +328,10 @@ def load_colmap_depth(basedir, factor=8, bd_factor=.75):
     _, bds_raw, _ = _load_data(basedir, factor=factor) # factor=8 downsamples original imgs by 8x
     bds_raw = np.moveaxis(bds_raw, -1, 0).astype(np.float32)
     # print(bds_raw.shape)
+
     # Rescale if bd_factor is provided
     sc = 1. if bd_factor is None else 1./(bds_raw.min() * bd_factor)
+    print(f"Min Raw Boundary: {bds_raw.min()}, Scale: {sc}")
     
     near = np.ndarray.min(bds_raw) * .9 * sc
     far = np.ndarray.max(bds_raw) * 1. * sc
@@ -425,45 +425,42 @@ def load_colmap_llff(basedir):
     basedir = Path(basedir)
 
     # shape of each pose [N, 3, 5]
-    train_poses = np.load(basedir / 'train_poses.npy')
-    test_poses = np.load(basedir / 'test_poses.npy')
+    train_poses = np.load(basedir / 'train_poses_colmap.npy')
+    test_poses = np.load(basedir / 'test_poses_colmap.npy')
     print("Loaded train and test poses.")
-    # print(f"train_poses shape: {str(train_poses.shape)}")
 
-    # Correct rotation matrix ordering and move variable dim to axis 0
-    train_poses = np.concatenate([
-        -train_poses[:,:,1:2], -train_poses[:,:,0:1],
-        -train_poses[:,:,2:4], train_poses[:,:,4:]], 2)
-    train_poses[:,[0, 1], 3] = train_poses[:,[1, 0], 3]
-    test_poses = np.concatenate([
-        -test_poses[:,:,1:2], -test_poses[:,:,0:1],
-        -test_poses[:,:,2:4], test_poses[:,:,4:]], 2)
-    test_poses[:,[0, 1], 3] = test_poses[:,[1, 0], 3]
+    train_poses = np.concatenate([train_poses[:,:,1:2], -train_poses[:,:,0:1], train_poses[:,:,2:]], 2)
+    test_poses = np.concatenate([test_poses[:,:,1:2], -test_poses[:,:,0:1], test_poses[:,:,2:]], 2)
+
+    # train_poses = np.concatenate([train_poses[:,:,0:1], -train_poses[:,:,1:3], train_poses[:,:,3:]], 2)
+    # train_poses[:, 1:3, 3] = -train_poses[:, 1:3, 3]
+    # test_poses = np.concatenate([test_poses[:,:,0:1], -test_poses[:,:,1:3], test_poses[:,:,3:]], 2)
+    # test_poses[:, 1:3, 3] = -test_poses[:, 1:3, 3]
+    # print(train_poses[0, :, :])
+
     # shape of boundary [N, 2]
-    bds = np.load(basedir / 'bds.npy')
+    bds = np.load(basedir / 'bds_colmap.npy')
     print("Loaded boundarys.")
     
     # Rescale
     bd_factor=.75
     sc = 1. if bd_factor is None else 1./(bds.min() * bd_factor)
-    train_poses[:,:3,3] *= sc
-    test_poses[:,:3,3] *= sc   
+    print(f"Min Raw Boundary: {bds.min()}, Scale: {sc}")
+    train_poses[:, :3, 3] *= sc
+    test_poses[:, :3, 3] *= sc   
     bds *= sc
 
-    train_num = train_poses.shape[0]
-    poses = recenter_poses(np.concatenate([train_poses, test_poses], 0))
-    train_poses = poses[:train_num, :, :]
-    test_poses = poses[train_num:, :, :]
+    # train_num = train_poses.shape[0]
+    # poses = recenter_poses(np.concatenate([train_poses, test_poses], 0))
+    # train_poses = poses[:train_num, :, :]
+    # test_poses = poses[train_num:, :, :]
     
     # shape of each imgs [N, 720, 1280, 3]
     train_imgs_z = np.load(basedir / 'train_images.npz', allow_pickle=True)
     train_imgs = train_imgs_z[train_imgs_z.files[0]]
-    # train_imgs = np.load(basedir / 'train_images.npy')
     test_imgs_z = np.load(basedir / 'test_images.npz', allow_pickle=True)
     test_imgs = test_imgs_z[test_imgs_z.files[0]]
     print("Loaded train and test images.")
-    # print(f"train_imgs shape: {str(train_imgs.shape)}")
-    # print(f"test_imgs shape: {str(test_imgs.shape)}")
     
     # shape of depth, coord, error: [720*1280], [720*1280, 2]
     depth_z = np.load(basedir / 'train_depths.npz', allow_pickle=True)

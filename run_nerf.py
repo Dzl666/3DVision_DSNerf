@@ -12,6 +12,7 @@ from tqdm import tqdm, trange
 import configargparse
 import imageio
 from skimage import img_as_ubyte
+from pathlib import Path
 
 from preprocess.load_llff import load_llff_data, load_colmap_depth, load_colmap_llff
 from preprocess.load_dtu import load_dtu_data
@@ -444,18 +445,41 @@ def train(args):
         i_train = list(range(train_poses.shape[0]))
         i_test = list(range(train_poses.shape[0], poses.shape[0]))
         i_val = i_test
+    
+    elif args.dataset_type == 'llff_depth':
+        if args.colmap_depth:
+            # depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75)
+            depth_z = np.load(Path(args.datadir) / 'train_depths.npz', allow_pickle=True)
+            depth_gts = depth_z[depth_z.files[0]]
+            
+        images, poses, bds, render_poses, i_test = load_llff_data(
+            args.datadir, args.factor, recenter=False, bd_factor=.75, spherify=args.spherify)
+        hwf = poses[0,:3,-1]
+        poses = poses[:,:3,:4]
+        print("=========== Loaded llff depth ===========")
+        if not isinstance(i_test, list):
+            i_test = [i_test]
 
-        if args.no_ndc:
-            near = np.min(bds) * .9
-            far = np.max(bds) * 1.
+        if args.llffhold > 0:
+            print('Auto LLFF holdout,', args.llffhold)
+            i_test = np.arange(images.shape[0])[::args.llffhold]
+        if args.test_scene is not None:
+            i_test = np.array([i for i in args.test_scene])
+        if i_test[0] < 0:
+            i_test = []
+        i_val = i_test
+        if args.train_scene is None:
+            i_train = np.array([i for i in np.arange(int(images.shape[0])) if
+                        (i not in i_test and i not in i_val)])
         else:
-            near = 0.
-            far = 1.
+            i_train = np.array([i for i in args.train_scene if
+                        (i not in i_test and i not in i_val)])
+
     elif args.dataset_type == 'llff':
         if args.colmap_depth:
             depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75)
         images, poses, bds, render_poses, i_test = load_llff_data(
-            args.datadir, args.factor, recenter=False, bd_factor=.75, spherify=args.spherify)
+            args.datadir, args.factor, recenter=True, bd_factor=.75)
         hwf = poses[0,:3,-1]
         poses = poses[:,:3,:4]
         print("=========== Loaded llff ===========")
@@ -476,37 +500,17 @@ def train(args):
         else:
             i_train = np.array([i for i in args.train_scene if
                         (i not in i_test and i not in i_val)])
-
-        if args.no_ndc:
-            near = np.ndarray.min(bds) * .9
-            far = np.ndarray.max(bds) * 1.
-        else:
-            near = 0.
-            far = 1.
-    # elif args.dataset_type == 'dtu':
-    #     images, poses, hwf = load_dtu_data(args.datadir)
-    #     print("=========== Loaded DTU dataset ===========")
-    #     if args.test_scene is not None:
-    #         i_test = np.array([i for i in args.test_scene])
-
-    #     if i_test[0] < 0:
-    #         i_test = []
-    #     i_val = i_test
-    #     if args.train_scene is None:
-    #         i_train = np.array([i for i in np.arange(int(images.shape[0])) if
-    #                     (i not in i_test and i not in i_val)])
-    #     else:
-    #         i_train = np.array([i for i in args.train_scene if
-    #                     (i not in i_test and i not in i_val)])
-        
-    #     near = 0.1
-    #     far = 5.0
-    #     if args.colmap_depth:
-    #         depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75)
     else:
         print('Unknown dataset type', args.dataset_type, 'exiting')
         return
     
+
+    if args.no_ndc:
+        near = np.min(bds) * .9
+        far = np.max(bds) * 1.1
+    else:
+        near = 0.
+        far = 1.
     print(f'Img shape:{images.shape}')
     print(f'(height, width, focal): {hwf}')
     print(f'Boundarys: NEAR: {near}, FAR: {far}')
