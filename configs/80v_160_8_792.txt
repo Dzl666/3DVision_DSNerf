@@ -1,4 +1,4 @@
-expname = 20230507_0220_revival
+expname = 20230512_1032_revival
 basedir = ./logs/80v_160_8_792
 datadir = ./data/80view_160_8_792
 dataset_type = llff

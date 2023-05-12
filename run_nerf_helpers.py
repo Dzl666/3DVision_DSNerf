@@ -337,7 +337,7 @@ def sample_pdf(bins, weights, N_samples, det=False, pytest=False):
 
     return samples
 
-def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=False):
+def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0., white_bkgd=False, pytest=False):
     """Transforms model's predictions to semantically meaningful values.
     Args:
         raw: [num_rays, num_samples along ray, 4]. Prediction from model.
@@ -400,7 +400,7 @@ def sample_sigma(rays_o, rays_d, viewdirs, network, z_vals, network_query):
 
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d)
 
-    return rgb, sigma, depth_map
+    return rgb, sigma, depth_map, weights
 
 
 def visualize_sigma(sigma, z_vals, filename):

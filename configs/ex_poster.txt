@@ -1,4 +1,4 @@
-expname = poster_05111200
+expname = poster_05111310
 basedir = ./logs/exp/poster
 datadir = ./data/experiments/poster
 dataset_type = llff

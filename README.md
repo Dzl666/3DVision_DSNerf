@@ -14,11 +14,11 @@
 
 * Change access: `chmod -R u+rwx,g+rwx,o+rx ./`
 
-> Training `sbatch --time=6:00:00 --gpus=1 --gres=gpumem:30g -n 1 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="python run_nerf.py --config configs/66vAnna_20_3_depth.txt > ./logs/training_log"`
+> Training `sbatch --time=6:00:00 --gpus=1 --gres=gpumem:30g -n 3 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="python run_nerf.py --config configs/66vAnna_20_3_depth.txt > ./logs/training_log"`
 
-> Only Render `sbatch --time=1:00:00 --gpus=1 --gres=gpumem:16g -n 3 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="python run_nerf.py --config configs/150v_90_15_2325.txt --render_only > ./logs/rendering_log"`
+> Only Render `sbatch --time=1:00:00 --gpus=1 --gres=gpumem:30g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_bookshelf --open-mode=append --wrap="python run_nerf.py --config configs/ex_bookshelf.txt --render_only > ./logs/rendering_log"`
 
-> Temp `sbatch --time=7:30:00 --gpus=1 --gres=gpumem:25g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_experiment --open-mode=append --wrap="python run_nerf.py --config configs/ex_bookshelf.txt > ./logs/training_log_experiment"`
+> Temp `sbatch --time=5:00:00 --gpus=1 --gres=gpumem:24g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_experiment --open-mode=append --wrap="python run_nerf.py --config configs/80v_160_8_792.txt > ./logs/training_log_experiment"`
 
 ## Current Work
 

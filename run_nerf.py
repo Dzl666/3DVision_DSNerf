@@ -160,10 +160,14 @@ def render_path(render_poses, hwf, chunk, render_kwargs, savedir=None, render_fa
             rgb8 = to8b(rgbs[-1])
             rgb8[np.isnan(rgb8)] = 0
             imageio.imwrite(os.path.join(savedir, '{:03d}.png'.format(i)), img_as_ubyte(rgb8))
+
             depth = depth.cpu().numpy()
             print("max:", np.nanmax(depth))
-            depth_norm = (depth - np.min(depth)) / (np.max(depth) - np.min(depth))
-            imageio.imwrite(os.path.join(savedir, '{:03d}_depth.png'.format(i)), img_as_ubyte(depth_norm))
+
+            min_depth = np.min(depth[np.nonzero(depth)])
+            depth_norm = (depth - min_depth) / (np.max(depth) - min_depth) * 255.
+            depth_norm[np.where(depth == 0)] = np.nan
+            imageio.imwrite(os.path.join(savedir, '{:03d}_depth.png'.format(i)), depth_norm.astype(np.uint8))
             # depth = depth / 5 * 255
             # depth_color = cv2.applyColorMap(depth.astype(np.uint8), cv2.COLORMAP_JET)[:,:,::-1]
             # depth_color[np.isnan(depth_color)] = 0
@@ -699,7 +703,9 @@ def train(args):
                 try:
                     batch_depth = next(raysDepth_iter).to(device)
                 except StopIteration:
-                    raysDepth_iter = iter(DataLoader(RayDataset(rays_depth), batch_size = N_depth, shuffle=True, num_workers=0))
+                    raysDepth_iter = iter(DataLoader(
+                        RayDataset(rays_depth), batch_size = N_depth, shuffle=True, num_workers=0
+                    ))
                     batch_depth = next(raysDepth_iter).to(device)
                 batch_depth = torch.transpose(batch_depth, 0, 1)
                 batch_rays_depth = batch_depth[:2] # 2 x B x 3
