@@ -481,7 +481,7 @@ def train(args):
 
     elif args.dataset_type == 'llff':
         if args.colmap_depth:
-            depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75)
+            depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75) #
         images, poses, bds, render_poses, i_test = load_llff_data(
             args.datadir, args.factor, recenter=True, bd_factor=.75)
         hwf = poses[0,:3,-1]
@@ -637,6 +637,8 @@ def train(args):
             print('Getting depth rays...')
             rays_depth_list = []
             for i in i_train:
+                # if(not depth_gts[i]):
+                #     continue
                 rays_depth = np.stack(get_rays_by_coord_np(H, W, focal, poses[i,:3,:4], depth_gts[i]['coord']), axis=0) # 2 x N x 3
                 # print(rays_depth.shape)
                 rays_depth = np.transpose(rays_depth, [1,0,2])

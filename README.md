@@ -5,7 +5,7 @@
 
 * Activate virtual environment: `source ../env-3dvision/bin/activate`
 
-* Debug `srun --time=1:00:00 --gpus=1 --gres=gpumem:30g -n 4 --mem-per-cpu=8g --pty bash`
+* Debug `srun --time=0:30:00 --gpus=1 --gres=gpumem:16g -n 3 --mem-per-cpu=8g --pty bash`
 * Check the status of allocation: `squeue`
 
 * Submit Job: `sbatch --time=4:00:00 --gpus=1 --gres=gpumem:16g -n 2 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="[...cmd...]"`
@@ -14,11 +14,11 @@
 
 * Change access: `chmod -R u+rwx,g+rwx,o+rx ./`
 
-> Training `sbatch --time=6:00:00 --gpus=1 --gres=gpumem:30g -n 3 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="python run_nerf.py --config configs/66vAnna_20_3_depth.txt > ./logs/training_log"`
+> Training `sbatch --time=4:00:00 --gpus=1 --gres=gpumem:20g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_book --open-mode=append --wrap="python run_nerf.py --config configs/ex_bookshelf.txt > ./logs/training_log_book"`
 
 > Only Render `sbatch --time=1:00:00 --gpus=1 --gres=gpumem:30g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_bookshelf --open-mode=append --wrap="python run_nerf.py --config configs/ex_bookshelf.txt --render_only > ./logs/rendering_log"`
 
-> Temp `sbatch --time=5:00:00 --gpus=1 --gres=gpumem:24g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_experiment --open-mode=append --wrap="python run_nerf.py --config configs/80v_160_8_792.txt > ./logs/training_log_experiment"`
+> Temp `sbatch --time=8:00:00 --gpus=1 --gres=gpumem:20g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_bookshelf_all --open-mode=append --wrap="python run_nerf.py --config configs/ex_bookshelf.txt > ./logs/training_log_bookshelf_all"`
 
 ## Current Work
 

@@ -1,6 +1,6 @@
-expname = 20230515_1632
-basedir = ./logs/exp/bookshelf
-datadir = ./data/experiments/bookshelf
+expname = 20230514_1845
+basedir = ./logs/exp/110v_bookshelf
+datadir = ./data/experiments/110view_bookshelf
 dataset_type = llff
 factor = 2
 llffhold = 6

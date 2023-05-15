@@ -1,6 +1,6 @@
-expname = 20230512_1032_revival
-basedir = ./logs/80v_160_8_792
-datadir = ./data/80view_160_8_792
+expname = 20230514_1257
+basedir = ./logs/80v_8_ext
+datadir = ./data/80view_8_ext
 dataset_type = llff
 factor = 2
 llffhold = 6
@@ -17,6 +17,6 @@ i_testset = 5000
 i_video = 10000
 N_iters = 50000
 
-seg_video = 3
 render_train = True
-render_itp_nodes = 2
+seg_video = 2
+render_itp_nodes = 3

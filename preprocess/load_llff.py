@@ -333,8 +333,8 @@ def load_colmap_depth(basedir, factor=8, bd_factor=.75):
     sc = 1. if bd_factor is None else 1./(bds_raw.min() * bd_factor)
     print(f"Min Raw Boundary: {bds_raw.min()}, Scale: {sc}")
     
-    near = np.ndarray.min(bds_raw) * .9 * sc
-    far = np.ndarray.max(bds_raw) * 1. * sc
+    near = np.min(bds_raw) * .9 * sc
+    far = np.max(bds_raw) * 1. * sc
     print('near/far:', near, far)
 
     data_list = []
@@ -342,25 +342,30 @@ def load_colmap_depth(basedir, factor=8, bd_factor=.75):
         depth_list = []
         coord_list = []
         weight_list = []
+        depth_low_bd = bds_raw[id_im-1,0] * sc
+        depth_up_bd = bds_raw[id_im-1,1] * sc
+        print(f"IMG-{id_im}, Bd_low:{depth_low_bd}, Bd_up:{depth_up_bd}")
         for i in range(len(images[id_im].xys)):
             point2D = images[id_im].xys[i]
             id_3D = images[id_im].point3D_ids[i]
             if id_3D == -1:
                 continue
-            point3D = points[id_3D].xyz
-            depth = (poses[id_im-1,:3,2].T @ (point3D - poses[id_im-1,:3,3])) * sc
-            if depth < bds_raw[id_im-1,0] * sc or depth > bds_raw[id_im-1,1] * sc:
+
+            depth = (poses[id_im-1,:3,2].T @ (points[id_3D].xyz - poses[id_im-1,:3,3])) * sc
+            if depth < depth_low_bd or depth > depth_up_bd:
                 continue
+
             err = points[id_3D].error
             weight = 2 * np.exp(-(err/Err_mean)**2)
             depth_list.append(depth)
             coord_list.append(point2D/factor)
             weight_list.append(weight)
         if len(depth_list) > 0:
-            print(id_im, len(depth_list), np.min(depth_list), np.max(depth_list), np.mean(depth_list))
+            print(f"{len(depth_list)}, Min:{np.min(depth_list)}, Max:{np.max(depth_list)}, Mean:{np.mean(depth_list)}")
             data_list.append({"depth":np.array(depth_list), "coord":np.array(coord_list), "error":np.array(weight_list)})
         else:
-            print(id_im, len(depth_list))
+            # data_list.append({})
+            print("no useful depth")
 
     data_file = Path(basedir) / 'colmap_depth.npy'
     # json.dump(data_list, open(data_file, "w"))

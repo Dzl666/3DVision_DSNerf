@@ -1,8 +1,8 @@
-expname = poster_05111310
+expname = 20230515_1450
 basedir = ./logs/exp/poster
 datadir = ./data/experiments/poster
 dataset_type = llff
-factor = 2
+factor = 1
 llffhold = 6
 N_rand = 1024
 N_samples = 32
@@ -15,8 +15,8 @@ depth_loss = True
 depth_lambda = 0.1
 i_testset = 5000
 i_video = 10000
-N_iters = 60000
+N_iters = 70000
 
-seg_video = 6
 render_train = True
+seg_video = 5
 render_itp_nodes = 2

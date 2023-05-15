@@ -30,9 +30,13 @@ def run_colmap(basedir, match_type):
         '--database_path', os.path.join(basedir, 'database.db'), 
         '--image_path', os.path.join(basedir, 'images'),
         '--ImageReader.single_camera', '1',
-        # '--SiftExtraction.use_gpu', '0',
+        '--ImageReader.camera_model', 'OPENCV',
+        '--ImageReader.camera_params', '988.1755,989.4150,630.0319,343.1271,0,0,0,0',
+        '--SiftExtraction.num_threads', '12',
+        '--SiftExtraction.gpu_index', '0',
+        '--SiftExtraction.max_image_size', '1280',
     ]
-    feat_output = ( subprocess.check_output(feature_extractor_args, universal_newlines=True) )
+    feat_output = (subprocess.check_output(feature_extractor_args, universal_newlines=True) )
     logfile.write(feat_output)
     print('Features extracted')
 

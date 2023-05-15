@@ -19,6 +19,7 @@ def load_colmap_data(realdir):
     print( 'Cameras', len(cam))
 
     h, w, f = cam.height, cam.width, cam.params[0]
+    f = 990.255
     # w, h, f = factor * w, factor * h, factor * f
     hwf = np.array([h,w,f]).reshape([3,1])
     
@@ -48,7 +49,9 @@ def load_colmap_data(realdir):
     pts3d = read_model.read_points3d_binary(points3dfile)
     
     # must switch to [-u, r, -t] from [r, -u, t], NOT [r, u, -t]
-    poses = np.concatenate([poses[:, 1:2, :], poses[:, 0:1, :], -poses[:, 2:3, :], poses[:, 3:4, :], poses[:, 4:5, :]], 1)
+    poses = np.concatenate([
+        poses[:,1:2,:], poses[:,0:1,:], -poses[:,2:3,:], poses[:,3:4,:], poses[:,4:5,:]
+    ], 1)
     
     return poses, pts3d, perm
 

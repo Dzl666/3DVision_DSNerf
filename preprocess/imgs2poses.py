@@ -15,7 +15,7 @@ if args.match_type != 'exhaustive_matcher' and args.match_type != 'sequential_ma
 	sys.exit()
 
 # Generate camera poses and sparse depth information using COLMAP:
-# python imgs2poses.py <your_scenedir>
+# python imgs2poses.py ../data/80view_8_ext
 
 if __name__=='__main__':
     gen_poses(args.scenedir, args.match_type)
