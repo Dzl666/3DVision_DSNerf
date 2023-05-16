@@ -1,8 +1,8 @@
-expname = 20230515_1632
+expname = 20230515_2220
 basedir = ./logs/exp/bookshelf
 datadir = ./data/experiments/bookshelf
 dataset_type = llff
-factor = 2
+factor = 1
 llffhold = 6
 N_rand = 1024
 N_samples = 32
@@ -15,7 +15,8 @@ depth_loss = True
 depth_lambda = 0.1
 i_testset = 5000
 i_video = 10000
-N_iters = 60000
+N_iters = 70000
 
-seg_video = 3
-render_itp_nodes = 0
+render_train = True
+seg_video = 5
+render_itp_nodes = 1

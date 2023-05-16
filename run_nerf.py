@@ -481,7 +481,12 @@ def train(args):
 
     elif args.dataset_type == 'llff':
         if args.colmap_depth:
-            depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75) #
+            depth_path = os.path.join(args.datadir, 'colmap_depth.npy')
+            if os.path.exists(depth_path):
+                print("Depth from colmap existed!")
+                depth_gts = np.load(depth_path)
+            else:
+                depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75) #
         images, poses, bds, render_poses, i_test = load_llff_data(
             args.datadir, args.factor, recenter=True, bd_factor=.75)
         hwf = poses[0,:3,-1]
