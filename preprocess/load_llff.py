@@ -248,7 +248,6 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     imgs = np.moveaxis(imgs, -1, 0).astype(np.float32)
     images = imgs
     bds = np.moveaxis(bds, -1, 0).astype(np.float32)
-    print("bds:", bds[0])
     
     # Rescale if bd_factor is provided
     sc = 1. if bd_factor is None else 1./(bds.min() * bd_factor)
@@ -279,8 +278,8 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
         tt = poses[:,:3,3] # ptstocam(poses[:3,3,:].T, c2w).T
         rads = np.percentile(np.abs(tt), 90, 0)
         c2w_path = c2w
-        N_views = 120
-        N_rots = 2
+        N_views = 100
+        N_rots = 1
         if path_zflat:
             zloc = -close_depth * .1    #zloc = np.percentile(tt, 10, 0)[2]
             c2w_path[:3,3] = c2w_path[:3,3] + zloc * c2w_path[:3,2]
@@ -307,13 +306,13 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
 
 def get_poses(images):
     poses = []
-    for i in images:
+    for i in sorted(images.keys()):
         R = images[i].qvec2rotmat()
         t = images[i].tvec.reshape([3,1])
         bottom = np.array([0,0,0,1.]).reshape([1,4])
         w2c = np.concatenate([np.concatenate([R, t], 1), bottom], 0)
         c2w = np.linalg.inv(w2c)
-        poses.append(c2w)
+        poses.append(c2w) 
     return np.array(poses)
 
 def load_colmap_depth(basedir, factor=8, bd_factor=.75):
@@ -364,10 +363,9 @@ def load_colmap_depth(basedir, factor=8, bd_factor=.75):
             print(f"{len(depth_list)}, Min:{np.min(depth_list)}, Max:{np.max(depth_list)}, Mean:{np.mean(depth_list)}")
             data_list.append({"depth":np.array(depth_list), "coord":np.array(coord_list), "error":np.array(weight_list)})
         else:
-            # data_list.append({})
             print("no useful depth")
 
-    data_file = Path(basedir) / 'colmap_depth.npy'
+    data_file = Path(basedir) / f"colmap_depth_{factor}.npy"
     # json.dump(data_list, open(data_file, "w"))
     np.save(data_file, data_list)
     return data_list

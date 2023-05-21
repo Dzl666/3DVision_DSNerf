@@ -162,8 +162,6 @@ def render_path(render_poses, hwf, chunk, render_kwargs, savedir=None, render_fa
             imageio.imwrite(os.path.join(savedir, '{:03d}.png'.format(i)), img_as_ubyte(rgb8))
 
             depth = depth.cpu().numpy()
-            print("max:", np.nanmax(depth))
-
             min_depth = np.min(depth[np.nonzero(depth)])
             depth_norm = (depth - min_depth) / (np.max(depth) - min_depth) * 255.
             depth_norm[np.where(depth == 0)] = np.nan
@@ -172,7 +170,6 @@ def render_path(render_poses, hwf, chunk, render_kwargs, savedir=None, render_fa
             # depth_color = cv2.applyColorMap(depth.astype(np.uint8), cv2.COLORMAP_JET)[:,:,::-1]
             # depth_color[np.isnan(depth_color)] = 0
             
-    print('Saved rendered test set')
     print("Rendering time: {:.4f}s for {} views.".format(time.time() - t, len(render_poses)))
     rgbs = np.stack(rgbs, 0)
     disps = np.stack(disps, 0)
@@ -481,12 +478,13 @@ def train(args):
 
     elif args.dataset_type == 'llff':
         if args.colmap_depth:
-            depth_path = os.path.join(args.datadir, 'colmap_depth.npy')
+            depth_path = os.path.join(args.datadir, f"colmap_depth_{args.factor}.npy")
             if os.path.exists(depth_path):
-                print("Depth from colmap existed!")
-                depth_gts = np.load(depth_path)
+                depth_gts = np.load(depth_path, allow_pickle=True)
+                print("Loaded depth from colmap")
             else:
-                depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75) #
+                print("Gennerating depth...")
+                depth_gts = load_colmap_depth(args.datadir, factor=args.factor, bd_factor=.75)
         images, poses, bds, render_poses, i_test = load_llff_data(
             args.datadir, args.factor, recenter=True, bd_factor=.75)
         hwf = poses[0,:3,-1]
@@ -532,6 +530,10 @@ def train(args):
     if args.render_train:
         # render_poses = np.array(poses[i_train])
         render_poses = Slerp_path(np.array(poses[i_train]), args.render_itp_nodes)
+        # render_poses = Slerp_path(np.array(poses[i_train][86:88]), 250)
+        # render_poses = Slerp_path(np.array(poses[i_train][:10]), 3)
+        # render_poses = render_poses + Slerp_path(np.array(poses[i_train][9:11]), 50)[1:]
+        # render_poses = render_poses + Slerp_path(np.array(poses[i_train][11:]), 3)[1:]
     elif args.render_mypath:
         render_poses = generate_renderpath(np.array(poses[i_test])[5:9], focal, scale=3)
     print(f'Render poses number:{len(render_poses)}')
@@ -569,10 +571,11 @@ def train(args):
         print('========== RENDER ONLY ==========')
         with torch.no_grad():
             if args.render_train:
-                testsavedir = os.path.join(basedir, expname, 'renderonly_{}_{:06d}'.format('train', start))
+                testsavedir = os.path.join(basedir, expname, 'renderonly_{}_{:06d}'.format('trainpath', start))
             else:
-                testsavedir = os.path.join(basedir, expname, 'renderonly_{}_{:06d}'.format('path', start))
+                testsavedir = os.path.join(basedir, expname, 'renderonly_{}_{:06d}'.format('mypath', start))
             os.makedirs(testsavedir, exist_ok=True)
+            os.makedirs(testsavedir+"/imgs", exist_ok=True)
 
             if args.render_test_ray:
                 # rays_o, rays_d = get_rays(H, W, focal, render_poses[0])
@@ -601,12 +604,11 @@ def train(args):
                     cut_end = poses_length*(piece+1) // video_pieces
                     rgbs, disps = render_path(
                         render_poses[cut_start : cut_end], hwf, args.chunk, render_kwargs_test, 
-                        savedir=os.path.join(testsavedir, str(piece)), render_factor=args.render_factor
+                        savedir=None, render_factor=args.render_factor
                         )
-                    rgbs, disps = render_path(render_poses[cut_start : cut_end], hwf, args.chunk, render_kwargs_test)
-                    imageio.mimwrite(os.path.join(testsavedir, f"rgb{piece}.mp4"), to8b(rgbs), fps=30, quality=8)
+                    imageio.mimwrite(os.path.join(testsavedir, f"rgb{str(piece)}.mp4"), to8b(rgbs), fps=30, quality=8)
                     disps[np.isnan(disps)] = 0
-                    imageio.mimwrite(os.path.join(testsavedir, f"disp{piece}.mp4"), to8b(disps / np.percentile(disps, 95)), fps=30, quality=8)
+                    imageio.mimwrite(os.path.join(testsavedir, f"disp{str(piece)}.mp4"), to8b(disps / np.percentile(disps, 95)), fps=30, quality=8)
                     # print('Depth stats', np.mean(disps), np.max(disps), np.percentile(disps, 95))    
             return
 
@@ -912,14 +914,10 @@ def train(args):
                     imageio.mimwrite(moviebase + 'rgb%d.mp4'%piece, to8b(rgbs), fps=30, quality=8)
                     imageio.mimwrite(moviebase + 'disp%d.mp4'%piece, to8b(disps / np.nanmax(disps)), fps=30, quality=8)
 
-                # rgbs, disps = render_path(render_poses[poses_length//2:], hwf, args.chunk, render_kwargs_test)
-
             # if args.use_viewdirs:
             #     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3,:4]
             #     with torch.no_grad():
             #         rgbs_still, _ = render_path(render_poses, hwf, args.chunk, render_kwargs_test)
-            #     render_kwargs_test['c2w_staticcam'] = None
-            #     imageio.mimwrite(moviebase + 'rgb_still.mp4', to8b(rgbs_still), fps=30, quality=8)
 
         global_step += 1
 

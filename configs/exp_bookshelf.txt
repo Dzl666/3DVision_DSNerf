@@ -1,8 +1,8 @@
-expname = 20230516_0645
-basedir = ./logs/exp/520v_room
-datadir = ./data/experiments/520view_room
+expname = 20230515_2220
+basedir = ./logs/exp/bookshelf
+datadir = ./data/experiments/bookshelf
 dataset_type = llff
-factor = 2
+factor = 1
 llffhold = 6
 N_rand = 1024
 N_samples = 32
@@ -13,9 +13,10 @@ no_ndc = True
 colmap_depth = True
 depth_loss = True
 depth_lambda = 0.1
-i_testset = 5000
-i_video = 10000
-N_iters = 40000
+i_testset = 50000
+i_video = 50000
+N_iters = 100000
 
 seg_video = 2
+render_train = False
 render_itp_nodes = 1

@@ -1,6 +1,6 @@
-expname = 20230515_1450
-basedir = ./logs/exp/poster
-datadir = ./data/experiments/poster
+expname = 20230516_2030
+basedir = ./logs/exp/520v_room
+datadir = ./data/experiments/520view_room
 dataset_type = llff
 factor = 1
 llffhold = 6
@@ -13,10 +13,13 @@ no_ndc = True
 colmap_depth = True
 depth_loss = True
 depth_lambda = 0.1
-i_testset = 5000
-i_video = 10000
-N_iters = 70000
+i_testset = 50000
+i_video = 200000
+N_iters = 200000
 
+chunk = 262144
 render_train = True
-seg_video = 6
-render_itp_nodes = 2
+seg_video = 5
+render_itp_nodes = 3
+
+render_only = True
