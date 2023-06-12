@@ -1,5 +1,7 @@
 # Depth-Supervised NeRF for project of ETHZ 3DVison Lecture
 
+[Video](https://youtube.com/playlist?list=PLUffCQyBEYtbOQg4-66ZrcuNmsX0OXVKv)
+
 ## File structure: 
 
 ### Code
@@ -9,21 +11,27 @@
 ### Datasets and Logs
 
 ./logs/exp/ --experiment outputs
-- bookshelf/20230515_2220 --bookshelf scene
-- poster/20230515_1450 --poster scene 
-- 520v_room/20230516 --room scene 
 - poster_less/20230608_1545 --poster scene with less training images 
 
 ./data/experiments --experiment data
-- bookshelf --bookshelf scene
-- poster --poster scene 
-- 520view_room --room scene 
 - poster_less --poster scene with less training images
+
+This dataset is captured by Hololens2 and consists of two video recordings of two different room scenes. Each capture contains thousands of RGB video frames in 1280×720, monocular depth frames in a lower capturing frequency, the intrinsic parameters of the camera, and the corresponding camera poses and timestamp for each RGB frame. For the first capture ([AnnaTrain](https://drive.google.com/file/d/1ejI0oGDvouf8kSXmtE2YtDnUD5xQ9CJ0/view)/[GowthamTrain](https://drive.google.com/file/d/1SDoMu82SKCXeIN0Jx5hPdFrSIh5NdLd5/view)), the HoloLens has a relatively slow movement, which results in a dataset containing less motion blur. While the second capture (named [AnnaTest](https://drive.google.com/file/d/1GM86hnksWmncO_VzHofgo8cX0_KKEzvO/view)/[GowthamTest](https://drive.google.com/file/d/1ch8T6YyFJjmdYxV6ZIc7_MvTgNo4QHTE/view)) contains more motion blur. Here use the AnnaTrain as an example.
+```
+AnnaTrain
+     ├── Depth (not used for this method)
+     ├── Head (not used for this method)
+     ├── SceneUnderstanding (not used for this method)
+     ├── Video(rename into: images)
+     └── poses_bounds.npy
+```
+
+See [google drive](https://drive.google.com/drive/folders/1QVC7wxyLZeEcIck142Z531eHLeQANbt5?usp=drive_link) for more output images, videos, logs, and saved models of our experiments.
 
 ## Coordinate System
 ![Alt text](<coordinate system_paper.png>)
 
-* If using the COLMAP application to estimate the camera pose, the coordinate system of the output is in the Open3D/COLMAP system, if runing the SFM process directly by code, the coordinate system is further transfered to the LLFF system
+* If use the COLMAP application to estimate the camera pose, the coordinate system of the output is in the Open3D/COLMAP system, if runing the SFM process directly by code, the coordinate system is further transfered to the LLFF system
 * The NeRF is training on the NeRF coordinate system
 * The direction of the HoloLens had been verified by Open3D rendering
 
@@ -54,13 +62,13 @@ The following command examples would be useful:
 
 * Submit Job: `sbatch --time=4:00:00 --gpus=1 --gres=gpumem:16g -n 2 --mem-per-cpu=8g --output=./logs/raw_output --open-mode=append --wrap="[...cmd...]"`
 * Check details of the job: `myjobs -j job_id`
-* Check details of the job: `scancel job_id`
+* Cancel job: `scancel job_id`
 
 * Change access permission for others: `chmod -R u+rwx,g+rwx,o+rx ./`
 
-> Training `sbatch --time=6:00:00 --gpus=1 --gres=gpumem:25g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_poster_less_cont --open-mode=append --wrap="python run_nerf.py --config configs/exp_poster_less.txt > ./logs/training_log_poster_less_cont"`
+### Example Run
 
-> Only Render `sbatch --time=4:00:00 --gpus=1 --gres=gpumem:35g -n 5 --mem-per-cpu=8g --output=./logs/raw_output_bookshelf --open-mode=append --wrap="python run_nerf.py --config configs/exp_bookshelf.txt --render_only > ./logs/rendering_log_bookshelf"`
+> Training and Rendering - `sbatch --time=4:00:00 --gpus=1 --gres=gpumem:24g -n 3 --mem-per-cpu=8g --output=./logs/raw_output_poster --open-mode=append --wrap="python run_nerf.py --config configs/exp_poster_less.txt > ./logs/training_log_poster"`
 
 
 ## 4. other pipelines 
@@ -69,10 +77,6 @@ Here are documents and comments related to our pipeline for converting the point
 Output: a set of aligned depth maps and a list containing the paths to the RGB frames corresponding to each generated depth frames. 
 * ./open3d_llff/llff_conversion.py --converts the Hololens poses, intrinsics, and the color_map_optimization.py outputs into the format suitable for the "colmap_llff" input of DS-Nerf training (see line 437 in ren_nerf.py). More instructions coule be found inside the code. 
 * ./open3d_llff/poses_from_colmap.py --converts the poses_bounds.npy output of colmap into the training/testing posrs abd bounds of 'colmap_llff' form.
-
-## Contact
-Ziyao Shang - zshang@ethz.ch
-Zilong Deng - dengzi@ethz.ch
 
 ## Citation and Acknowledgmentgs:
 Our pipeline is build upon the [DS-Nerf](https://github.com/dunbar12138/DSNeRF) pipeline. If you use our code, please make sure to cite the original DS-Nerf paper:
