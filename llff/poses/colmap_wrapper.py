@@ -1,6 +1,8 @@
 import os
 import subprocess
 
+
+
 # $ DATASET_PATH=/path/to/dataset
 
 # $ colmap feature_extractor \
@@ -19,32 +21,29 @@ import subprocess
 
 # $ mkdir $DATASET_PATH/dense
 def run_colmap(basedir, match_type):
-
-    colmap_path = '../COLMAP_3.8/bin/colmap.exe'
     
     logfile_name = os.path.join(basedir, 'colmap_output.txt')
     logfile = open(logfile_name, 'w')
-    
+    colmap_dir = "/Users/ziyaoshang/Desktop/SP 2023/DSNeRF_ziyao_ckp/COLMAP.app/Contents/MacOS/colmap"
     feature_extractor_args = [
-        colmap_path, 'feature_extractor',
-        '--database_path', os.path.join(basedir, 'database.db'), 
-        '--image_path', os.path.join(basedir, 'images'),
-        '--ImageReader.single_camera', '1',
-        '--ImageReader.camera_model', 'OPENCV',
-        '--ImageReader.camera_params', '988.1755,989.4150,630.0319,343.1271,0,0,0,0',
-        '--SiftExtraction.num_threads', '12',
-        '--SiftExtraction.gpu_index', '0',
-        '--SiftExtraction.max_image_size', '1280',
+        colmap_dir, 'feature_extractor',
+            '--database_path', os.path.join(basedir, 'database.db'), 
+            '--image_path', os.path.join(basedir, 'images'),
+            '--ImageReader.single_camera', '1',
+            'SiftExtraction.peak_threshold', '0.005',
+            'SiftExtraction.edge_threshold', '7'
+            # '--SiftExtraction.use_gpu', '0',
     ]
-    feat_output = (subprocess.check_output(feature_extractor_args, universal_newlines=True) )
+    feat_output = ( subprocess.check_output(feature_extractor_args, universal_newlines=True) )
     logfile.write(feat_output)
     print('Features extracted')
 
     exhaustive_matcher_args = [
-        colmap_path, match_type, '--database_path', os.path.join(basedir, 'database.db'), 
+        colmap_dir, match_type,
+            '--database_path', os.path.join(basedir, 'database.db'), 
     ]
 
-    match_output = (subprocess.check_output(exhaustive_matcher_args, universal_newlines=True) )
+    match_output = ( subprocess.check_output(exhaustive_matcher_args, universal_newlines=True) )
     logfile.write(match_output)
     print('Features matched')
     
@@ -61,13 +60,14 @@ def run_colmap(basedir, match_type):
     #         '--Mapper.init_min_tri_angle', '4',
     # ]
     mapper_args = [
-        colmap_path, 'mapper', '--database_path', os.path.join(basedir, 'database.db'),
-        '--image_path', os.path.join(basedir, 'images'),
-        '--output_path', os.path.join(basedir, 'sparse'), # --export_path changed to --output_path in colmap 3.6
-        '--Mapper.num_threads', '16',
-        '--Mapper.init_min_tri_angle', '4',
-        '--Mapper.multiple_models', '0',
-        '--Mapper.extract_colors', '0',
+        colmap_dir, 'mapper',
+            '--database_path', os.path.join(basedir, 'database.db'),
+            '--image_path', os.path.join(basedir, 'images'),
+            '--output_path', os.path.join(basedir, 'sparse'), # --export_path changed to --output_path in colmap 3.6
+            '--Mapper.num_threads', '16',
+            '--Mapper.init_min_tri_angle', '4',
+            '--Mapper.multiple_models', '1',
+            '--Mapper.extract_colors', '0',
     ]
 
     map_output = ( subprocess.check_output(mapper_args, universal_newlines=True) )

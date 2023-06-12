@@ -37,8 +37,6 @@ def generate_renderpath(poses, focal, N_views = 120, N_rots = 2, zrate=.5, scale
     '''
     poses: N x 3 x 4
     '''
-    # print(poses)
-    # print("!!!!!!!!!!!!!!!!!!")
     c2w = poses_avg(poses)
     up = normalize(poses[:, :3, 1].sum(0))
 

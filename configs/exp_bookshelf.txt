@@ -17,6 +17,7 @@ i_testset = 50000
 i_video = 50000
 N_iters = 100000
 
-seg_video = 2
-render_train = False
+seg_video = 7
+render_train = True
 render_itp_nodes = 1
+render_mypath = False

@@ -15,7 +15,6 @@ from skimage import img_as_ubyte
 from pathlib import Path
 
 from preprocess.load_llff import load_llff_data, load_colmap_depth, load_colmap_llff
-from preprocess.load_dtu import load_dtu_data
 from preprocess.data import RayDataset
 from loss import SigmaLoss
 from run_nerf_helpers import *
@@ -535,7 +534,9 @@ def train(args):
         # render_poses = render_poses + Slerp_path(np.array(poses[i_train][9:11]), 50)[1:]
         # render_poses = render_poses + Slerp_path(np.array(poses[i_train][11:]), 3)[1:]
     elif args.render_mypath:
-        render_poses = generate_renderpath(np.array(poses[i_test])[5:9], focal, scale=3)
+        render_poses = generate_renderpath(
+            np.array(poses[i_train])[5:9], 
+            focal=focal, N_views=100, N_rots=1, scale=3)
     print(f'Render poses number:{len(render_poses)}')
     # Move testing data to GPU
     render_poses = torch.from_numpy(np.array(render_poses)).to(device)
@@ -946,7 +947,7 @@ def config_parser():
                         help='learning rate')
     parser.add_argument("--lrate_decay", type=int, default=250, 
                         help='exponential learning rate decay (in 1000 steps)')
-    parser.add_argument("--chunk", type=int, default=1024*32, 
+    parser.add_argument("--chunk", type=int, default=2048*64, 
                         help='number of rays processed in parallel, decrease if running out of memory')
     parser.add_argument("--netchunk", type=int, default=1024*64, 
                         help='number of pts sent through network in parallel, decrease if running out of memory')
@@ -1018,7 +1019,7 @@ def config_parser():
     parser.add_argument("--debug",  action='store_true')
 
     # new experiment by kangle
-    parser.add_argument("--N_iters", type=int, default=200000, help='number of iters')
+    parser.add_argument("--N_iters", type=int, default=100000, help='number of iters')
     parser.add_argument("--alpha_model_path", type=str, default=None, help='predefined alpha model')
     parser.add_argument("--no_coarse", action='store_true', help="Remove coarse network.")
     parser.add_argument("--train_scene", nargs='+', type=int, help='id of scenes used to train')
