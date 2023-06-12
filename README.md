@@ -1,5 +1,13 @@
 # Depth-Supervised NeRF for project of ETHZ 3DVison Lecture
-## file structure: 
+
+## File structure: 
+
+### Code
+
+- run_nerf.py
+
+### Datasets and Logs
+
 ./logs/exp/ --experiment outputs
 - bookshelf/20230515_2220 --bookshelf scene
 - poster/20230515_1450 --poster scene 
@@ -10,9 +18,16 @@
 - bookshelf --bookshelf scene
 - poster --poster scene 
 - 520view_room --room scene 
-- poster_less --poster scene with less training images 
+- poster_less --poster scene with less training images
 
-## pipeline:
+## Coordinate System
+![Alt text](<coordinate system_paper.png>)
+
+* If using the COLMAP application to estimate the camera pose, the coordinate system of the output is in the Open3D/COLMAP system, if runing the SFM process directly by code, the coordinate system is further transfered to the LLFF system
+* The NeRF is training on the NeRF coordinate system
+* The direction of the HoloLens had been verified by Open3D rendering
+
+## Pipeline:
 ### 1. load dependencies
 * If you are not running on Euler, please consult the official [tutorial](https://github.com/dunbar12138/DSNeRF#dependencies) for environment building.
 * The list of dependencies could be found at [./requirements.txt](https://github.com/Dzl666/3DVision_DSNerf/blob/master/requirements.txt)
