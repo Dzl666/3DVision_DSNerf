@@ -15,6 +15,7 @@
 ## pipeline:
 ### 1, load dependencies
 * If you are not running on Euler, please consult the official [tutorial](https://github.com/dunbar12138/DSNeRF#dependencies) for environment building.
+* The list of dependances could be found in ./requirements.txt
 
 #### if running on euler 
 * Load module: `module load gcc/8.2.0 cuda/11.6.2 python/3.8.5 cudnn/8.0.5 cmake/3.19.8 eth_proxy`
